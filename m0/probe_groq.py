@@ -24,6 +24,8 @@ sys.path.insert(0, str(HERE.parent))
 from laghu_voice.services.llm_openai import LLMError, LLMStats, OpenAICompatLLM  # noqa: E402
 
 LATIN = re.compile(r"[A-Za-z]")
+# masculine first person ("बताता हूँ", "बोल रहा हूँ", "करूँगा"): wrong for the female voice
+MASC_1P = re.compile(r"(?:ता|रहा|गया) हूँ|ूँगा")
 DIGITS = re.compile(r"[0-9०-९]")
 
 
@@ -45,13 +47,26 @@ def parse_json(text):
         return None
 
 
-async def one_call(llm, messages, **kw):
-    stats = LLMStats()
-    try:
-        text = "".join([t async for t in llm.stream(messages, stats=stats, **kw)])
-        return text, stats, None
-    except (LLMError, Exception) as e:  # noqa: BLE001 - record and continue
-        return "", stats, repr(e)[:300]
+RETRY_AFTER = re.compile(r"try again in ([0-9.]+)\s*(ms|s)")
+
+
+async def one_call(llm, messages, retries=4, **kw):
+    """One timed call. A rate-limit reply (HTTP 429) is a quota problem, not a model failure: wait as long as
+    Groq asks, then try again with a fresh timer. Only the last attempt's timing is recorded."""
+    for attempt in range(retries + 1):
+        stats = LLMStats()
+        try:
+            text = "".join([t async for t in llm.stream(messages, stats=stats, **kw)])
+            return text, stats, None
+        except (LLMError, Exception) as e:  # noqa: BLE001 - record and continue
+            err = repr(e)[:300]
+            if "HTTP 429" in err and attempt < retries:
+                m = RETRY_AFTER.search(err)
+                wait = float(m.group(1)) / (1000 if m and m.group(2) == "ms" else 1) if m else 3.0
+                print(f"  rate limited, waiting {wait + 0.5:.1f} s and retrying")
+                await asyncio.sleep(wait + 0.5)
+                continue
+            return "", stats, err
 
 
 async def main_async(a):
@@ -81,6 +96,8 @@ async def main_async(a):
                     flags.append("latin_letters")
                 if p.get("no_numbers_given") and DIGITS.search(text):
                     flags.append("digits_when_none_given")
+                if MASC_1P.search(text):
+                    flags.append("masculine_first_person")
                 rows.append({"model": model, "run": run, "id": p["id"], "kind": "phrasing",
                              "ttft_ms": st.ttft_ms, "total_ms": st.total_ms, "ok": err is None and not flags,
                              "flags": "|".join(flags), "error": err, **_usage(st)})
@@ -124,6 +141,9 @@ async def main_async(a):
         f = lambda x: f"{x:7.0f}" if x is not None else "    n/a"  # noqa: E731
         print(f"{model:28} {f(p50)}   {f(p95)}   {ph_ok:3}/{len(ph):<3}     {ex_ok:3}/{len(ex):<3}       "
               f"{errors:3}    {'qualifies' if qualifies else 'does not qualify'}")
+        masc = [r for r in mr if "masculine_first_person" in r["flags"]]
+        if masc:
+            print(f"    {len(masc)} replies used masculine first-person verbs (the voice is female)")
         invented = [r for r in mr if "digits_when_none_given" in r["flags"]]
         if invented:
             print(f"    {len(invented)} replies used digits when no number was given; read them in groq_replies.jsonl")
@@ -139,7 +159,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--models", nargs="+", default=["openai/gpt-oss-20b", "llama-3.3-70b-versatile"])
     ap.add_argument("--runs", type=int, default=3)
-    ap.add_argument("--pause", type=float, default=0.5, help="seconds between calls (stay under rate limits)")
+    ap.add_argument("--pause", type=float, default=2.5,
+                    help="seconds between calls; Groq's free tier allows 30 requests per minute per model")
     ap.add_argument("--base-url", default="https://api.groq.com/openai/v1")
     ap.add_argument("--yes", action="store_true", help="actually call the API")
     asyncio.run(main_async(ap.parse_args()))

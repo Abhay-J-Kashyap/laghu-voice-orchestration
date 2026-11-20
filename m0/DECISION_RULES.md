@@ -52,4 +52,61 @@ the network round trip, so it's compared on total time, not decode time.
 
 ## Amendments
 
-(none yet)
+### Amendment 1 (20 Nov 2026), written after run 1 of probe_groq.py
+
+Run 1 can't decide rule 1: 8 of 39 gpt-oss-20b calls hit Groq's free-tier limit (30 requests per minute),
+and all 39 calls to `llama-3.3-70b-versatile` returned "model not found" for this API key. Partial result
+for the record (31 calls that succeeded): phrasing time to first token p50 474 ms, p95 968 ms; extraction
+7 of 7 correct; no Latin letters; no invented numbers.
+
+Reading the replies showed two problems rule 1 didn't check. Because these were seen in run 1's results,
+this amendment says so, and the changes apply to both models in run 2:
+
+1. **Agent gender.** Every reply used masculine first-person verbs (बताता हूँ, करूँगा) while Laghu's voice is
+   female. The system prompt now says the agent is a woman. `probe_groq.py` flags masculine first-person
+   verbs, and a flagged reply doesn't count as a good phrasing reply.
+2. **Invented account facts.** 3 of 21 phrasing replies stated things the model couldn't know ("your documents
+   haven't been processed", "your loan is in processing"), and 2 more said an application had been received.
+   The system prompt now forbids statements about the caller's application, documents, account or status.
+   Rule 1 gains a condition: **at most 1 of a model's 30 phrasing replies may state such a fact**. That is
+   judged by reading the replies, since the probe can't detect it.
+3. **Second model.** `llama-3.3-70b-versatile` is replaced by: `openai/gpt-oss-120b` (picked from the models this key can
+   use, before running it).
+4. **Rate limits.** The probe waits 2.5 s between calls and retries a call that gets HTTP 429. A rate-limited
+   call is a quota problem, not a model failure.
+
+The latency, script and extraction conditions of rule 1 are unchanged.
+
+### Amendment 2 (21 Nov 2026), written after run 2 of probe_groq.py
+
+Run 2 result (30 phrasing and 9 extraction calls per model; no errors, no rate limits). Percentiles are
+nearest-rank over the 30 phrasing calls, as the script prints them.
+
+| model | TTFT p50 | TTFT p95 | no Latin | extraction | masculine verbs | invented account facts |
+|---|---|---|---|---|---|---|
+| openai/gpt-oss-20b | 279 ms | 618 ms | 30/30 | 9/9 | 0 | 0 |
+| openai/gpt-oss-120b | 450 ms | 706 ms | 30/30 | 9/9 | 0 | 1 (p07, run 0: "I'll look at the documents you sent again", implying they were already seen) |
+
+**Neither model qualifies under rule 1.** Both fail only the p95 condition. gpt-oss-20b misses it by 18 ms
+(2 of 30 replies above 600 ms: 618 ms and 880 ms). The 600 ms limit is not changed, and probe_groq.py is not
+rerun to try to pass it.
+
+What changes, decided now:
+
+1. `openai/gpt-oss-20b` is the development LLM for Milestones 2 to 4, recorded as not meeting rule 1. It is
+   the faster model at p50 and passes every other condition.
+2. The slow tail is handled in the design, not by the threshold. In Milestone 4, if the LLM's first token
+   hasn't arrived 500 ms after the end of the caller's turn, the agent plays a short pre-synthesised
+   acknowledgement (for example "जी, एक पल") and carries on when the reply arrives. Turns the state machine
+   can answer from templates don't call the LLM at all.
+3. The latency condition is measured again in Milestone 5: at least 200 phrasing calls, from the machine the
+   server runs on, with the Milestone 4 prompts. That measurement decides whether the filler stays.
+
+Seen while reading the replies, not part of the rule (inputs for the Milestone 4 prompt):
+
+- Both models promise actions they can't take ("I'll check your EMI and tell you", "I'll connect you to a
+  person"), because the probe gives them no facts and no actions. In the agent, the state machine decides the
+  action and supplies the facts; the LLM only phrases them.
+- gpt-oss-120b invented a bank name twice ("ABC Bank", "Express Bank") and an agent name once ("Sushma"). The
+  prompt must give the bank's and the agent's names.
+- gpt-oss-20b never answered "who is speaking?", and once addressed the caller as a woman (चाहती हैं).
