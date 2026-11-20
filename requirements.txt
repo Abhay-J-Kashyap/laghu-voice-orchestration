@@ -1,0 +1,15 @@
+# Server
+numpy
+websockets>=13
+httpx
+python-dotenv
+huggingface_hub   # scripts/get_laghu.py
+# Laghu TTS runtime (same as laghu-tts-7m-hindi/requirements.txt)
+onnxruntime
+sentencepiece
+soundfile
+# CLI client (sound output)
+sounddevice
+# Tests
+pytest
+pytest-asyncio

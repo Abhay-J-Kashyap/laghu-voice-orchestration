@@ -1,0 +1,6 @@
+﻿CPU: 13th Gen Intel(R) Core(TM) i5-1335U
+Physical cores: 10
+Logical processors: 12
+RAM: 15.7 GB
+OS: Microsoft Windows 11 Enterprise 10.0.26200
+Python: Python 3.10.22

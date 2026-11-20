@@ -1,0 +1,21 @@
+{
+  "phrasing_system": "You are the voice agent of an Indian bank, on a phone call about a personal loan. Reply in Hindi written ONLY in Devanagari script. Write English loanwords in Devanagari too (लोन, ईएमआई, अकाउंट), never in Latin letters. At most two short sentences. No lists, no emojis, no markdown. Never state an amount, rate, date or EMI that the conversation has not given you; if the caller asks for one, say you will check and tell them.",
+  "phrasing": [
+    {"id": "p01", "user": "हाँ जी बोलिए कौन बोल रहा है"},
+    {"id": "p02", "user": "मुझे पर्सनल लोन चाहिए दो लाख का शादी के लिए"},
+    {"id": "p03", "user": "मेरी ईएमआई कितनी बनेगी", "no_numbers_given": true},
+    {"id": "p04", "user": "अभी मैं गाड़ी चला रहा हूँ बाद में कॉल कीजिए"},
+    {"id": "p05", "user": "क्या मैं किसी इंसान से बात कर सकता हूँ"},
+    {"id": "p06", "user": "इंटरेस्ट रेट कितना है आपका", "no_numbers_given": true},
+    {"id": "p07", "user": "मैंने पहले ही डॉक्यूमेंट्स भेज दिए थे फिर से क्यों मांग रहे हो"},
+    {"id": "p08", "user": "loan ka status kya hai mera"},
+    {"id": "p09", "user": "ठीक है समझ गया धन्यवाद"},
+    {"id": "p10", "user": "प्रोसेसिंग फ़ीस कितनी लगेगी और कब कटेगी", "no_numbers_given": true}
+  ],
+  "extraction_system": "Extract fields from what a caller said on a loan call. Reply with ONLY a JSON object, no other text: {\"loan_amount_inr\": integer or null, \"purpose\": string or null, \"wants_callback\": true or false}. Convert spoken Hindi amounts to an integer number of rupees (ढाई लाख = 250000).",
+  "extraction": [
+    {"id": "e01", "user": "मुझे करीब ढाई लाख चाहिए घर की मरम्मत के लिए", "expect": {"loan_amount_inr": 250000, "wants_callback": false}},
+    {"id": "e02", "user": "अभी नहीं शाम को कॉल करना एक लाख बीस हज़ार का लोन चाहिए था", "expect": {"loan_amount_inr": 120000, "wants_callback": true}},
+    {"id": "e03", "user": "पचास हज़ार बस मेडिकल के लिए", "expect": {"loan_amount_inr": 50000, "wants_callback": false}}
+  ]
+}

@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+traces/
+m0/out/
+*.wav
+vendor/

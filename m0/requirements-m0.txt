@@ -1,0 +1,6 @@
+# Extra packages for probe_stt.py (IndicConformer). The CPU build of torch is enough:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+torch
+transformers
+huggingface_hub
+scipy
