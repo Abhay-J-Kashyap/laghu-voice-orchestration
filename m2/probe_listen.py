@@ -92,7 +92,9 @@ async def main_async(a):
 
     async def on_turn(t):
         turns.append(t)
-    lis = Listener(vad, stt, turn, on_turn, None, "probe", ListenConfig(spec_ms=a.spec_ms, tail_ms=a.tail_ms))
+    lis = Listener(vad, stt, turn, on_turn, None, "probe",
+                   ListenConfig(spec_ms=a.spec_ms, tail_ms=a.tail_ms, max_segment_s=a.max_segment_s,
+                                dump_dir=a.dump))
     sc = m0_scoring()
     manifest = [json.loads(l) for l in open(ROOT / "m0" / "out" / f"laghu_{a.voice}" / "manifest.jsonl",
                                             encoding="utf-8")]
@@ -107,6 +109,7 @@ async def main_async(a):
                "err": sc.lev(ref, hyp), "len": len(ref)}
         if got:
             last = got[-1].trace.marks
+            row["long_cuts"] = sum(len(x.get("long_cuts", [])) for x in recs)
             row.update({
                 "true_end_to_transcript_ms": round((last["stt_final"] - true_end) / 1e6, 1) if true_end else None,
                 "true_end_to_turn_end_ms": round((last["turn_end"] - true_end) / 1e6, 1) if true_end else None,
@@ -119,21 +122,24 @@ async def main_async(a):
               f"({row.get('end_reason')}) | {text}")
     out = HERE / "out"
     out.mkdir(exist_ok=True)
-    name = "listen_runs" + ("_no_turn_model" if a.no_turn_model else "") + ".jsonl"
+    name = ("listen_runs" + ("_no_turn_model" if a.no_turn_model else "") + ("_diag" if a.dump else "")
+            + ".jsonl")
     with (out / name).open("w", encoding="utf-8") as f:
         for row in rows:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
     ok = [r for r in rows if r["turns"] == 1]
-    tr = [r["true_end_to_transcript_ms"] for r in ok]
-    te = [r["true_end_to_turn_end_ms"] for r in ok]
+    heard = [r for r in rows if r["turns"] >= 1]       # Amendment 1: M2-1 uses every clip's last turn
+    tr = [r["true_end_to_transcript_ms"] for r in heard]
+    te = [r["true_end_to_turn_end_ms"] for r in heard]
     cer = 100 * sum(r["err"] for r in rows) / sum(r["len"] for r in rows)
     bad = [f"{r['id']} r{r['rendition']} ({r['turns']} turns)" for r in rows if r["turns"] != 1]
-    reasons = {k: sum(1 for r in ok if r["end_reason"] == k) for k in {r["end_reason"] for r in ok}}
-    probs = [c["prob"] for r in ok for c in r["turn_checks"][:1]]
-    st_ms = [c["ms"] for r in ok for c in r["turn_checks"]]
+    reasons = {k: sum(1 for r in heard if r["end_reason"] == k) for k in {r["end_reason"] for r in heard}}
+    probs = [c["prob"] for r in heard for c in r["turn_checks"][:1]]
+    st_ms = [c["ms"] for r in heard for c in r["turn_checks"]]
     print(f"\n{len(rows)} clips, {a.voice} voice, STT {a.stt_threads} threads, "
-          f"{'no turn model' if a.no_turn_model else 'Smart Turn v3.2'}, spec {a.spec_ms} ms, tail {a.tail_ms} ms")
+          f"{'no turn model' if a.no_turn_model else 'Smart Turn v3.2'}, spec {a.spec_ms} ms, tail {a.tail_ms} ms, "
+          f"segments cut at {a.max_segment_s} s")
     print(f"M2-1 end of speech -> final transcript: p50 {pct(tr, 50)} ms, p95 {pct(tr, 95)} ms -> "
           f"{'met' if tr and pct(tr, 95) <= 400 else 'not met'} (limit 400)")
     print(f"M2-2 in-loop CER (standard): {cer:.2f}% -> {'met' if cer <= 3.68 else 'not met'} (limit 3.68%)")
@@ -144,7 +150,7 @@ async def main_async(a):
         print(f"report: Smart Turn first answer: median prob {statistics.median(probs):.2f}, "
               f"{sum(p >= 0.5 for p in probs)}/{len(probs)} said 'done'; inference p50 {pct(st_ms, 50)} ms, "
               f"p95 {pct(st_ms, 95)} ms")
-    print(f"report: wasted speculative decodes {sum(r.get('wasted_decodes', 0) for r in ok)}; VAD "
+    print(f"report: wasted speculative decodes {sum(r.get('wasted_decodes', 0) for r in heard)}; VAD "
           f"{lis.vad_ns / max(1, lis.windows) / 1e3:.0f} us per 32 ms window")
     print(f"wrote {out / name}")
     stt.close()
@@ -158,6 +164,8 @@ def main():
     ap.add_argument("--stt-threads", type=int, default=4)
     ap.add_argument("--spec-ms", type=int, default=96)
     ap.add_argument("--tail-ms", type=int, default=96)
+    ap.add_argument("--max-segment-s", type=float, default=10.0)
+    ap.add_argument("--dump", help="diagnostics: save every decoded segment as a WAV in this folder")
     asyncio.run(main_async(ap.parse_args()))
 
 

@@ -41,11 +41,11 @@ def silence(ms):
     return np.zeros(int(SR * ms / 1000), np.float32)
 
 
-async def run(listener, *parts, settle=0.3):
+async def run(listener, *parts, settle=0.3, realtime=False):
     x = np.concatenate(parts)
     for i in range(0, len(x), WIN):
         listener.feed_float(x[i:i + WIN])
-        await asyncio.sleep(0.001)         # let decodes and turn-model answers land, roughly in order
+        await asyncio.sleep(WIN / SR if realtime else 0.001)   # let decodes and turn-model answers land
     await asyncio.sleep(settle)
 
 
@@ -147,4 +147,22 @@ async def test_long_speech_without_pauses_is_cut():
     starts = [s["start_s"] for s in rec["segments"]]
     assert starts == sorted(starts)
     assert turns[0].text.split() == [f"w{i}" for i in range(1, len(rec["segments"]) + 1)]
+    await lis.close()
+
+
+async def test_speech_right_after_a_turn_end_keeps_its_first_syllable():
+    class SlowTurn(ScriptedTurn):        # answers after ~100 ms, as the real model does at p95
+        def probability(self, audio):
+            import time
+            time.sleep(0.1)
+            return super().probability(audio)
+
+    lis, turns, _, _ = make(SlowTurn([0.9]))
+    onset = 0.004 * speech(96) / 0.3          # a soft start, too quiet to count as speech on its own
+    await run(lis, speech(512), silence(224), onset, speech(512), silence(900), realtime=True)
+    assert len(turns) == 2
+    second = turns[1].audio
+    rms = [np.sqrt(np.mean(second[i:i + WIN] ** 2)) for i in range(0, len(second) - WIN + 1, WIN)]
+    assert sum(1 for r in rms if 0.001 < r < 0.01) >= 3   # the soft start belongs to the second turn
+    assert sum(1 for r in rms if r > 0.1) >= 16
     await lis.close()

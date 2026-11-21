@@ -49,3 +49,85 @@ pause, and note whether each was cut off early, joined to the next, or heard rig
 keeps every turn's timings.
 
 ## Amendments
+
+### Amendment 1 (21 Nov 2026), written after run 1 and the first live session, before run 2
+
+**Run 1** (defaults; 30 male clips): all three rules failed.
+
+| Rule | Result | Limit |
+|---|---|---|
+| M2-1 end of speech to transcript, p95 | 502 ms over the 9 one-turn clips; 487 ms over all 30 clips (last turn) | 400 ms |
+| M2-2 in-loop CER | 4.32% | 3.68% |
+| M2-3 clips with exactly one turn | 9 of 30 | 29 |
+
+Also measured: turn end p50 364 ms, p95 425 ms after the true end of speech; Smart Turn 48 ms p50, 116 ms p95.
+
+**Live session** (Abhay, headphones, 11 caller turns): transcript ready a median 202 ms after he stopped,
+433 ms at worst (a 5.6 s PAN read without a pause). Smart Turn held through every long mid-sentence pause
+(probabilities 0.005 to 0.25), ended one turn early ("मेरा पैन नंबर है", "my PAN number is", at exactly 0.500),
+and left 4 of 11 turns to the 1.5 s silence cap. He found it pleasant to talk to.
+
+**Reading the failures**
+
+1. *M2-3.* Every split (21 clips) is at a comma, where Laghu pauses for 224 ms or more and Smart Turn judged
+   the clause finished (0.85 to 0.99). Laghu says a comma with the falling pitch of a sentence end; the live
+   session shows Smart Turn does hold through a real speaker's mid-sentence pauses. So on Laghu's clips M2-3
+   measures Laghu's commas more than Smart Turn. Nothing changes for it here. Its threshold and the silence
+   cap are tuned in Milestone 3 on live turns, under rules written before that data is collected.
+2. *A bug behind part of M2-2.* While Smart Turn is deciding (50 to 120 ms), the caller's next words can
+   start softly, below the VAD's speech threshold. Those windows went into the old turn, and the next turn's
+   pre-roll started empty, so its first syllable was lost: s09 renditions 0 and 1 heard "क्या यह सही है" as
+   "क है" (23 of the 83 character errors). Fix: when a turn ends, its last 320 ms seed the next pre-roll.
+   `tests/test_listener.py` has a test that fails without the fix.
+3. *M2-1.* The slowest clips (502, 487, 402 ms) are 5 to 7 s sentences spoken with no pause of 200 ms, so
+   the segment left to decode at the end is the whole sentence (240 to 310 ms of decoding). The retune allowed
+   above (spec and tail 64 ms) would save about 32 ms, not enough, and a shorter tail risks clipping word
+   endings, so it is not used. The next lever, chosen here: while the caller keeps talking, the open segment
+   is cut at its quietest 32 ms window of the last 2 s once it reaches 3 s (`max_segment_s` 10 → 3), so the
+   segment decoded after they stop is short.
+
+**Run 2** uses both changes and nothing else, and is the last run in Milestone 2. M2-1 is computed over all
+30 clips, each clip's last turn (two thirds of run 1's clips had more than one turn, so "the one-turn clips"
+is not a fair sample). If M2-2 fails in run 2 and the new cuts are the cause (its CER is above run 1's), then
+`max_segment_s` returns to 10 and M2-1 is recorded as missed.
+
+### Amendment 2 (21 Nov 2026), result of run 2; Milestone 2's rules closed
+
+| Rule | Run 1 | Run 2 (pre-roll fix, 3 s cuts) | Limit |
+|---|---|---|---|
+| M2-1 end of speech to transcript, p95 (all 30 clips) | 487 ms | 392 ms | 400 ms |
+| M2-2 in-loop CER | 4.32% | **16.56%** | 3.68% |
+| M2-3 clips with exactly one turn | 9 | 14 | 29 |
+
+The 3 s cuts are the cause of run 2's CER: the 17 clips that had a cut went from 60 to 293 character errors,
+the 13 without one from 23 to 25. As Amendment 1 decided, `max_segment_s` returns to 10 and **M2-1 is
+recorded as missed (487 ms, run 1)**. **M2-2 and M2-3 are recorded as failed.** The pre-roll fix stays.
+
+Smart Turn took 133 ms per call at p50 in run 2 (48 ms in run 1) while STT decodes ran alongside it on this
+2-performance-core CPU. Slower answers let Laghu's next clause start before the turn ended, which is why
+fewer clips split. The thread budget is revisited in the Milestone 5 load test.
+
+**Open question carried into Milestone 3, checked before any Milestone 3 rule:** the cut segments decode as
+nonsense even when the cut falls in a pause (s07 rendition 0: "आपका लोन अप्रूव हो गया है" came out as
+"तो आो है"), and short segments closed by a pause sometimes do too (s09: "क्या यह सही है" as "क है" in five of
+six turns over both runs). That could be the model or a bug in the listener's path. Diagnostic, not a judged
+run: `probe_listen.py --max-segment-s 3 --dump m2/out/dump` saves every segment the listener decoded, then
+`decode_dump.py` decodes the same audio again in a fresh process, alone and with 0.5 s of silence added at
+each end. Same text alone means the listener passes audio correctly and the model is the cause.
+
+### Amendment 3 (21 Nov 2026), the diagnostic's answer: it's the model, and silence fixes it
+
+`decode_dump.py` on the 104 segments saved from a diagnostic run with 3 s cuts (same clips and settings as run
+2): **104 of 104 decode to exactly the same text alone, in a fresh process.** The listener hands the model
+the right audio; the nonsense is the model's answer to that audio.
+
+The same segments with **0.5 s of silence added at both ends**: CER over the 30 clips (segments the listener
+kept, joined per clip) falls from **16.56% to 3.80%**, with the 3 s cuts still in place. Examples: "तो आो है"
+→ "आपका रोन अप्रूव हो गया है और"; "क है" → "क्या यह सही है" (this one failed in every run, with or without
+cuts); "तोवा है" → "मैं लघू हूँ". So this IndicConformer export needs silence around the speech it reads, and
+the listener's segments (320 ms of pre-roll, 96 ms of tail, or none at a cut) don't give it enough.
+
+Next, still diagnostic: `pad_sweep.py` tries eight amounts of silence before and after on the same kept
+segments and times each. These clips are now used for tuning, so the padding it picks is judged in
+Milestone 3 on clips it was not tuned on (the female clips in `m0/out/laghu_female`) and on live speech,
+under rules written before those runs.

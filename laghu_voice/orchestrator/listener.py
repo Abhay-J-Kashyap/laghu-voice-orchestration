@@ -51,7 +51,9 @@ class ListenConfig:
     silence_cap_ms: int = 1500    # end the turn after this much silence whatever the turn model says
     silence_only_ms: int = 700    # end of turn when there is no turn model
     turn_threshold: float = 0.5
-    max_segment_s: float = 10.0   # cut a long segment without pauses at its quietest point
+    max_segment_s: float = 10.0   # while the caller keeps talking, cut the open segment at its quietest point
+                                  # once it is this long (3 s was tried in Milestone 2 run 2: it broke accuracy)
+    dump_dir: str | None = None   # diagnostics: save every decoded segment as a WAV, with its transcript
 
 
 @dataclass
@@ -97,6 +99,7 @@ class Listener:
         self.on_event = on_event
         self.session_id = session_id
         self._ids = itertools.count(1)
+        self._last_rms = 0.0
         self._pending = np.zeros(0, np.float32)
         self._preroll: collections.deque = collections.deque(maxlen=max(1, round(self.cfg.preroll_ms / WIN_MS)))
         self._speech_run: list[np.ndarray] = []
@@ -165,7 +168,7 @@ class Listener:
         self.checks: list[dict] = []
         self.wasted = 0
         self.ending = False
-        self.open_probs: list[float] = []
+        self.open_rms: list[float] = []  # loudness of each window in the open segment (for cutting long ones)
 
     def _step(self, w: np.ndarray, p: float, t_ns: int) -> None:
         if self.turn is None:
@@ -179,6 +182,7 @@ class Listener:
             return
         if self.ending:
             return
+        self._last_rms = float(np.sqrt(np.mean(np.square(w))))
         self.audio.append(w)
         self.n += WIN
         is_speech = p >= (self.cfg.vad_off if self.speaking else self.cfg.vad_on)
@@ -213,14 +217,14 @@ class Listener:
                 self.committed = False
                 self.seg_start = self.segments[-1].end if self.segments else self.seg_start
                 self.spec = None
-                self.open_probs = []
+                self.open_rms = []
             self.check_gen += 1
             self.next_check_ms = None
             self._emit({"type": "vad", "speech": True, "turn_id": self.turn.turn_id})
         self.silence_ms = 0.0
         self.speech_end = self.n
         self.turn.mark("speech_end", t_ns, first_only=False)
-        self.open_probs.append(p)
+        self.open_rms.append(self._last_rms)
         if (self.n - self.seg_start) / SR > self.cfg.max_segment_s:
             self._cut_long_segment()
 
@@ -233,16 +237,16 @@ class Listener:
             self.speaking = False
             self._emit({"type": "vad", "speech": False, "turn_id": self.turn.turn_id})
         self.silence_ms += WIN_MS
-        self.open_probs.append(p)
+        self.open_rms.append(self._last_rms)
         if not self.committed:
             if self.spec is None and self.silence_ms >= self.cfg.spec_ms:
                 end = min(self.n, self.speech_end + round(self.cfg.tail_ms * SR / 1000))
-                self.spec = self._decode(self.seg_start, end)
+                self.spec = self._decode(self.seg_start, end, "pause")
                 self.turn.mark("final_decode_start", first_only=False)
             if self.silence_ms >= self.cfg.commit_ms:
                 if self.spec is None:
                     end = min(self.n, self.speech_end + round(self.cfg.tail_ms * SR / 1000))
-                    self.spec = self._decode(self.seg_start, end)
+                    self.spec = self._decode(self.seg_start, end, "pause")
                     self.turn.mark("final_decode_start", first_only=False)
                 self.segments.append(self.spec)
                 self.committed = True
@@ -256,27 +260,46 @@ class Listener:
             self._end_turn("silence_cap" if self.turn_model is not None else "silence_only")
 
     def _cut_long_segment(self) -> None:
-        look = min(len(self.open_probs), round(2000 / WIN_MS))
-        recent = self.open_probs[-look:]
+        """Close the open segment at the quietest window of its last 2 s (usually a gap between words)."""
+        look = min(len(self.open_rms), round(2000 / WIN_MS))
+        recent = self.open_rms[-look:]
         k = int(np.argmin(recent))
         cut = self.n - WIN * (look - k) + WIN // 2
-        seg = self._decode(self.seg_start, cut)
+        seg = self._decode(self.seg_start, cut, "cut")
         self.segments.append(seg)
         self.seg_start = cut
-        self.open_probs = self.open_probs[-(look - k):]
+        self.open_rms = self.open_rms[-(look - k):]
         self.turn.append("long_cuts", round(cut / SR, 2))
 
     # ------------------------------------------------------------------ STT and turn model
-    def _decode(self, start: int, end: int) -> Segment:
+    def _decode(self, start: int, end: int, kind: str) -> Segment:
         seg = Segment(len(self.segments), start, end, queued_ns=now_ns())
         audio = self._slice(start, end)
+        turn_id = self.turn.turn_id
+        n_dump = self._dumped = getattr(self, "_dumped", 0) + 1
 
         async def run():
             text, ms = await self.stt.decode(audio)
             seg.text, seg.decode_ms, seg.done_ns = text, ms, now_ns()
+            if self.cfg.dump_dir:
+                self._dump(audio, f"{self.session_id}_{turn_id}_{n_dump:03d}_{kind}", text, ms, start, end)
             return text
         seg.task = self._spawn(run())
         return seg
+
+    def _dump(self, audio, name, text, ms, start, end) -> None:
+        import json
+        from pathlib import Path
+
+        import soundfile as sf
+
+        d = Path(self.cfg.dump_dir)
+        d.mkdir(parents=True, exist_ok=True)
+        sf.write(d / f"{name}.wav", audio, SR, subtype="FLOAT")
+        with (d / "index.jsonl").open("a", encoding="utf-8") as f:
+            f.write(json.dumps({"file": f"{name}.wav", "text": text, "decode_ms": round(ms, 1),
+                                "start_s": round(start / SR, 3), "end_s": round(end / SR, 3)},
+                               ensure_ascii=False) + "\n")
 
     def _slice(self, start: int, end: int) -> np.ndarray:
         return np.concatenate(self.audio)[start:end] if self.audio else np.zeros(0, np.float32)
@@ -312,6 +335,7 @@ class Listener:
             return
         self.ending = True
         turn = self.turn
+        tail = self.audio[-self._preroll.maxlen:]
         turn.mark("turn_end")
         segments = list(self.segments)
         audio = self._slice(0, self.n)
@@ -334,6 +358,9 @@ class Listener:
                          "transcript_after_turn_end": round(max(0, m["stt_final"] - m["turn_end"]) / 1e6, 1)})
             await self.on_turn(UserTurn(turn.turn_id, text, reason, audio, turn, segments))
         self._reset_turn()
+        # The caller may already have started speaking again while the turn model was deciding: those windows
+        # went into the old turn. Seed the next turn's pre-roll with them, or its first syllable is lost.
+        self._preroll.extend(tail)
         self._spawn(finish())
 
     # ------------------------------------------------------------------ helpers
