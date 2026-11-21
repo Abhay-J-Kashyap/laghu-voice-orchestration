@@ -13,3 +13,6 @@ sounddevice
 # Tests
 pytest
 pytest-asyncio
+
+#others
+onnx-asr

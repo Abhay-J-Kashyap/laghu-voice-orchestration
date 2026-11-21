@@ -28,7 +28,7 @@ _DONE = object()
 class LaghuTTS:
     sample_rate = 24_000
 
-    def __init__(self, laghu_dir: Path, voice: str = "female", cfg: float = 2.0,
+    def __init__(self, laghu_dir: Path, voice: str = "male", cfg: float = 2.0,
                  lm_threads: int = 1, decoder_threads: int = 1, prep: TextPrep | None = None):
         laghu_dir = Path(laghu_dir).resolve()
         model_dir = laghu_dir / "model"

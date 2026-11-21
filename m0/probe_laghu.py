@@ -1,10 +1,11 @@
 """Milestone 0: time Laghu through the server's own adapter, whole sentences vs first clauses (decision rule 2).
 
-    python m0/probe_laghu.py
+    python m0/probe_laghu.py                  # male voice (the default)
+    python m0/probe_laghu.py --voice female
 
 For each of the 10 sentences in m0/sentences_bfsi.txt, speaks the whole sentence and its first clause
 (text up to the first comma), 3 renditions each (Laghu samples, so renditions differ). Saves every clip as
-m0/out/laghu/<variant>/<id>_r<k>.wav plus m0/out/laghu/manifest.jsonl, which probe_stt.py reads for CER.
+m0/out/laghu_<voice>/<variant>/<id>_r<k>.wav plus m0/out/laghu_<voice>/manifest.jsonl, which probe_stt.py reads for CER.
 Two warm-up calls are made first and not recorded.
 """
 from __future__ import annotations
@@ -53,7 +54,7 @@ async def main_async(a):
 
     tts = LaghuTTS(Path(a.laghu_dir), voice=a.voice, lm_threads=a.lm_threads, decoder_threads=a.decoder_threads)
     sents = [s.strip() for s in (HERE / "sentences_bfsi.txt").read_text(encoding="utf-8").splitlines() if s.strip()]
-    out = HERE / "out" / "laghu"
+    out = HERE / "out" / f"laghu_{a.voice}"
     for _ in range(2):
         await speak(tts, sents[0])
     rows = []
@@ -69,7 +70,7 @@ async def main_async(a):
                 path.parent.mkdir(parents=True, exist_ok=True)
                 sf.write(path, audio, 24000)
                 dur = len(audio) / 24000
-                rows.append({"id": f"s{i:02d}", "variant": variant, "rendition": k, "path": str(path.relative_to(HERE)),
+                rows.append({"voice": a.voice, "id": f"s{i:02d}", "variant": variant, "rendition": k, "path": str(path.relative_to(HERE)),
                              "text": text, "model_text": info.model_text, "dropped_words": info.dropped_words,
                              "first_audio_ms": round(1000 * (first or total), 1), "total_ms": round(1000 * total, 1),
                              "audio_s": round(dur, 3), "x_real_time": round(dur / total, 2) if total else None})
@@ -83,13 +84,13 @@ async def main_async(a):
         v = [r for r in rows if r["variant"] == variant]
         print(f"{variant:8}: median first audio {statistics.median(r['first_audio_ms'] for r in v):.1f} ms, "
               f"median {statistics.median(r['x_real_time'] for r in v):.1f}x real time ({len(v)} clips)")
-    print(f"\nwrote {out / 'manifest.jsonl'}. Next: python m0/probe_stt.py")
+    print(f"\nwrote {out / 'manifest.jsonl'}. Next: python m0/probe_stt.py --voice {a.voice}")
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--laghu-dir", default=str(DEFAULT_LAGHU_DIR), help="default: vendor/laghu (scripts/get_laghu.py)")
-    ap.add_argument("--voice", default="female")
+    ap.add_argument("--voice", default="male", help="male or female; clips go to m0/out/laghu_<voice>/")
     ap.add_argument("--renditions", type=int, default=3)
     ap.add_argument("--lm-threads", type=int, default=1)
     ap.add_argument("--decoder-threads", type=int, default=1)

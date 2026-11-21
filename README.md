@@ -84,15 +84,16 @@ $env:GROQ_API_KEY = "gsk_..."
 python m0\probe_groq.py
 python m0\probe_groq.py --yes
 
-# 2. Laghu: whole sentences vs first clauses, 3 renditions each, saved as WAVs
-python m0\probe_laghu.py
+# 2. Laghu: whole sentences vs first clauses, 3 renditions each, saved as WAVs in m0\out\laghu_<voice>
+python m0\probe_laghu.py                  # male voice (decides rule 2)
+python m0\probe_laghu.py --voice female   # for the record
 
 # 3. IndicConformer on CPU: decode time, and CER of the clips from step 2
 python -m pip install -r m0\requirements-m0.txt
-python m0\probe_stt.py
-python m0\probe_stt.py --groq-whisper     # optional: also time Groq's Whisper on the same clips
+python m0\probe_stt.py --groq-whisper     # male clips; --groq-whisper also times Groq's Whisper
+python m0\probe_stt.py --voice female     # female clips, for the record
 ```
-Send me the printed summaries and `m0\out\groq_replies.jsonl`. Listen to a few WAVs in `m0\out\laghu\clause`
+Send me the printed summaries and `m0\out\groq_replies.jsonl`. Listen to a few WAVs in `m0\out\laghu_male\clause`
 before believing any CER number.
 
 ## Layout

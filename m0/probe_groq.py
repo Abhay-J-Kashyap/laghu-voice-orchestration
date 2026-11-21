@@ -24,8 +24,12 @@ sys.path.insert(0, str(HERE.parent))
 from laghu_voice.services.llm_openai import LLMError, LLMStats, OpenAICompatLLM  # noqa: E402
 
 LATIN = re.compile(r"[A-Za-z]")
-# masculine first person ("बताता हूँ", "बोल रहा हूँ", "करूँगा"): wrong for the female voice
-MASC_1P = re.compile(r"(?:ता|रहा|गया) हूँ|ूँगा")
+# first-person verb forms by gender. prompts_groq.json's "agent_gender" says which one the voice needs;
+# replies using the other one are flagged "wrong_gender_first_person".
+FIRST_PERSON = {
+    "male": re.compile(r"(?:ता|रहा|गया) हू[ँं]|[ूऊ][ँं]गा"),     # बताता हूँ, बोल रहा हूँ, करूँगा, बताऊंगा
+    "female": re.compile(r"(?:ती|रही|गई) हू[ँं]|[ूऊ][ँं]गी"),   # बताती हूँ, बोल रही हूँ, करूँगी, बताऊंगी
+}
 DIGITS = re.compile(r"[0-9०-९]")
 
 
@@ -71,6 +75,8 @@ async def one_call(llm, messages, retries=4, **kw):
 
 async def main_async(a):
     spec = json.loads((HERE / "prompts_groq.json").read_text(encoding="utf-8"))
+    gender = spec.get("agent_gender", "male")
+    wrong_gender = FIRST_PERSON["female" if gender == "male" else "male"]
     n_calls = len(a.models) * (len(spec["phrasing"]) + len(spec["extraction"])) * a.runs
     print(f"plan: {len(a.models)} models x ({len(spec['phrasing'])} phrasing + {len(spec['extraction'])} "
           f"extraction) x {a.runs} runs = {n_calls} calls, roughly {n_calls * 350:,} tokens in total")
@@ -96,8 +102,8 @@ async def main_async(a):
                     flags.append("latin_letters")
                 if p.get("no_numbers_given") and DIGITS.search(text):
                     flags.append("digits_when_none_given")
-                if MASC_1P.search(text):
-                    flags.append("masculine_first_person")
+                if wrong_gender.search(text):
+                    flags.append("wrong_gender_first_person")
                 rows.append({"model": model, "run": run, "id": p["id"], "kind": "phrasing",
                              "ttft_ms": st.ttft_ms, "total_ms": st.total_ms, "ok": err is None and not flags,
                              "flags": "|".join(flags), "error": err, **_usage(st)})
@@ -141,9 +147,9 @@ async def main_async(a):
         f = lambda x: f"{x:7.0f}" if x is not None else "    n/a"  # noqa: E731
         print(f"{model:28} {f(p50)}   {f(p95)}   {ph_ok:3}/{len(ph):<3}     {ex_ok:3}/{len(ex):<3}       "
               f"{errors:3}    {'qualifies' if qualifies else 'does not qualify'}")
-        masc = [r for r in mr if "masculine_first_person" in r["flags"]]
+        masc = [r for r in mr if "wrong_gender_first_person" in r["flags"]]
         if masc:
-            print(f"    {len(masc)} replies used masculine first-person verbs (the voice is female)")
+            print(f"    {len(masc)} replies used first-person verbs of the wrong gender (the voice is {gender})")
         invented = [r for r in mr if "digits_when_none_given" in r["flags"]]
         if invented:
             print(f"    {len(invented)} replies used digits when no number was given; read them in groq_replies.jsonl")

@@ -1,9 +1,11 @@
 """Milestone 0: IndicConformer decode time on CPU, and CER of Laghu's clips (decision rules 2 and 3).
 
-    python m0/probe_stt.py                  # decode time + CER
+    python m0/probe_stt.py                  # decode time + CER, male clips
+    python m0/probe_stt.py --voice female   # same for the female clips
+    python m0/probe_stt.py --stt hi120m     # Hindi-only 120M IndicConformer (pip install onnx-asr)
     python m0/probe_stt.py --groq-whisper   # also time Groq whisper-large-v3-turbo (uses quota)
 
-Reads m0/out/laghu/manifest.jsonl from probe_laghu.py. Loads ai4bharat/indic-conformer-600m-multilingual the
+Reads m0/out/laghu_<voice>/manifest.jsonl from probe_laghu.py. Loads ai4bharat/indic-conformer-600m-multilingual the
 same way Laghu's evaluation notebook does (including its symlink fix), on CPU, CTC decoding. Needs:
     pip install torch transformers huggingface_hub soundfile scipy
 and HF_TOKEN set if the model asks you to accept its terms.
@@ -104,26 +106,88 @@ def load_conformer():
     return transcribe
 
 
-def groq_whisper(path, key, model="whisper-large-v3-turbo"):
+def groq_whisper(path, key, model="whisper-large-v3-turbo", retries=4):
+    """One transcription -> (text, ms). Retries HTTP 429 (free tier: 20 requests per minute), waiting as long as Groq asks."""
     import httpx
 
-    with open(path, "rb") as f:
-        r = httpx.post("https://api.groq.com/openai/v1/audio/transcriptions",
-                       headers={"Authorization": f"Bearer {key}"}, timeout=30,
-                       data={"model": model, "language": "hi", "response_format": "json"},
-                       files={"file": (Path(path).name, f, "audio/wav")})
-    r.raise_for_status()
-    return r.json()["text"]
+    for attempt in range(retries + 1):
+        t0 = time.perf_counter()
+        with open(path, "rb") as f:
+            r = httpx.post("https://api.groq.com/openai/v1/audio/transcriptions",
+                           headers={"Authorization": f"Bearer {key}"}, timeout=30,
+                           data={"model": model, "language": "hi", "response_format": "json"},
+                           files={"file": (Path(path).name, f, "audio/wav")})
+        if r.status_code == 429 and attempt < retries:
+            wait = float(r.headers.get("retry-after", "5"))
+            print(f"    rate-limited, waiting {wait + 0.5:.1f} s")
+            time.sleep(wait + 0.5)
+            continue
+        r.raise_for_status()
+        return r.json()["text"], 1000 * (time.perf_counter() - t0)   # time of the successful call only
+
+
+def save(rows, manifest, name="stt_results.jsonl"):
+    out = Path(manifest).with_name(name)
+    with out.open("w", encoding="utf-8") as f:
+        for r in rows:
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    return out
+
+
+HI120M = "OpenVoiceOS/ai4bharat-indicconformer-hi-onnx"   # ONNX export of ai4bharat's Hindi-only 120M model
+
+
+def load_hi120m(quantization=None, path=None):
+    """Hindi-only IndicConformer (120M, CTC/RNNT hybrid) through the onnx-asr library: pip install onnx-asr.
+    No NeMo, no torch. quantization="int8" uses the int8 weights the repo also ships."""
+    import onnx_asr
+    import onnxruntime as ort
+
+    so = ort.SessionOptions()
+    so.intra_op_num_threads = int(os.environ.get("STT_THREADS", "4"))
+    try:
+        model = onnx_asr.load_model(HI120M, path, quantization=quantization, sess_options=so)
+    except Exception as e:  # noqa: BLE001
+        if path is not None and not Path(path, f"model.{quantization}.onnx").exists():
+            sys.exit(f"{path} has no model.{quantization}.onnx: run python m0/quantize_hi120m.py first")
+        if quantization:
+            sys.exit(f"could not load the {quantization} model ({e}).\n"
+                     "Some int8 exports need a ConvInteger kernel ONNX Runtime's CPU build doesn't have; use --stt hi120m.")
+        raise
+
+    def transcribe(x):
+        out = model.recognize(x, sample_rate=16000)
+        return out if isinstance(out, str) else getattr(out, "text", str(out))
+    return transcribe
+
+
+STT_MODELS = {   # name -> (description, loader, results file)
+    "multi600m": (f"{REPO} (600M, CTC)", lambda: load_conformer(), "stt_results.jsonl"),
+    "hi120m": (f"{HI120M} (120M, fp32)", lambda: load_hi120m(), "stt_results_hi120m.jsonl"),
+    "hi120m-int8": (f"{HI120M} (120M, int8)", lambda: load_hi120m("int8"), "stt_results_hi120m-int8.jsonl"),
+    "hi120m-uint8": ("hi120m, our int8 copy (MatMul weights uint8, convolutions fp32)",
+                     lambda: load_hi120m("uint8", HERE / "out" / "hi120m"), "stt_results_hi120m-uint8.jsonl"),
+}
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--manifest", default=str(HERE / "out" / "laghu" / "manifest.jsonl"))
+    ap.add_argument("--voice", default="male", help="reads m0/out/laghu_<voice>/manifest.jsonl")
+    ap.add_argument("--manifest", default=None, help="overrides --voice")
+    ap.add_argument("--stt", default="multi600m", choices=list(STT_MODELS),
+                    help="multi600m: the 600M multilingual model (rule 3's first candidate); hi120m / hi120m-int8: "
+                         "the Hindi-only 120M model, needs pip install onnx-asr")
     ap.add_argument("--groq-whisper", action="store_true", help="also time Groq whisper-large-v3-turbo (uses quota)")
+    ap.add_argument("--pause", type=float, default=3.5, help="seconds between Groq calls (free tier: 20 per minute)")
     a = ap.parse_args()
+    a.manifest = a.manifest or str(HERE / "out" / f"laghu_{a.voice}" / "manifest.jsonl")
     rows = [json.loads(l) for l in open(a.manifest, encoding="utf-8")]
-    print(f"{len(rows)} clips from {a.manifest}; loading {REPO} on CPU ...")
-    transcribe = load_conformer()
+    desc, loader, results_name = STT_MODELS[a.stt]
+    if os.environ.get("STT_THREADS", "4") != "4":      # keep runs with other thread counts apart
+        results_name = results_name.replace(".jsonl", f"_t{os.environ['STT_THREADS']}.jsonl")
+    print(f"{len(rows)} clips from {a.manifest}; loading {desc} on CPU, "
+          f"{os.environ.get('STT_THREADS', '4')} threads ...")
+    transcribe = loader()
     transcribe(read16k(HERE / rows[0]["path"]))           # warm-up, not recorded
     for r in rows:
         x = read16k(HERE / r["path"])
@@ -140,7 +204,7 @@ def main():
 
     sent = [r for r in rows if r["variant"] == "sentence"]
     d = [r["decode_ms"] for r in sent]
-    print(f"\nIndicConformer CTC decode on CPU, whole sentences ({len(sent)} clips, "
+    print(f"\n{desc} decode on CPU, whole sentences ({len(sent)} clips, "
           f"{statistics.median(r['audio_s'] for r in sent):.1f} s median length): "
           f"p50 {pct(d, 50):.0f} ms, p95 {pct(d, 95):.0f} ms -> rule 3: "
           f"{'keep' if pct(d, 95) <= 400 else 'too slow, try a smaller model'}")
@@ -157,21 +221,20 @@ def main():
     print(f"clause minus sentence (standard): {gap:+.1f} points -> rule 2 CER part: "
           f"{'met' if gap <= 1.0 else 'not met'}{' (between 0.5 and 1.5: rerun on FLEURS)' if 0.5 <= gap <= 1.5 else ''}")
 
+    out = save(rows, a.manifest, results_name)   # IndicConformer results are kept even if the Groq part fails
+    print(f"wrote {out}")
+
     if a.groq_whisper:
         key = os.environ.get("GROQ_API_KEY") or sys.exit("set GROQ_API_KEY")
         times = []
         for r in sent:
-            t0 = time.perf_counter()
-            r["groq_hyp"] = groq_whisper(HERE / r["path"], key)
-            times.append(1000 * (time.perf_counter() - t0))
+            r["groq_hyp"], ms = groq_whisper(HERE / r["path"], key)
+            times.append(ms)
+            time.sleep(a.pause)
         print(f"Groq whisper-large-v3-turbo, total time incl. network: p50 {pct(times, 50):.0f} ms, "
               f"p95 {pct(times, 95):.0f} ms")
-
-    out = Path(a.manifest).with_name("stt_results.jsonl")
-    with out.open("w", encoding="utf-8") as f:
-        for r in rows:
-            f.write(json.dumps(r, ensure_ascii=False) + "\n")
-    print(f"wrote {out}")
+        save(rows, a.manifest, results_name)
+        print(f"added Groq transcripts to {out}")
 
 
 if __name__ == "__main__":

@@ -34,7 +34,7 @@ class Settings:
     # TTS: "laghu" (real model) or "stub" (a tone, for tests and for running without the model)
     tts_backend: str = field(default_factory=lambda: _env("LV_TTS", "stub"))
     laghu_dir: Path = field(default_factory=lambda: Path(_env("LAGHU_DIR", str(DEFAULT_LAGHU_DIR))))
-    laghu_voice: str = field(default_factory=lambda: _env("LAGHU_VOICE", "female"))
+    laghu_voice: str = field(default_factory=lambda: _env("LAGHU_VOICE", "male"))
     laghu_cfg: float = field(default_factory=lambda: float(_env("LAGHU_CFG", "2.0")))
 
     # Audio pacing: how far ahead of the listener the server may send audio (see design doc, Runtime model)
