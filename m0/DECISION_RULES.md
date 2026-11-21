@@ -200,3 +200,38 @@ within the CER condition goes into Milestone 2, which transcribes speculatively 
 speaking, and rule 3 is judged there on what the caller actually waits for: p95 time from end of speech to
 final transcript ≤ 400 ms.
 
+### Amendment 7 (21 Nov 2026), results of Amendment 6's candidates; Milestone 0 closed
+
+Machine: 13th Gen Intel Core i5-1335U, 10 cores (2 performance + 8 efficiency), 12 threads.
+
+| model, threads | decode p50 | decode p95 (≤ 400) | all-10 CER (≤ 3.68%) | kept? |
+|---|---|---|---|---|
+| 120M fp32, 4 | 393 ms | 569 ms | 3.18% | no: too slow |
+| 120M fp32, 10 | 315 ms | 834 ms | 3.18% | no: too slow |
+| 120M uint8 (ours), 10 | 237 ms | 394 ms | 4.27% | no: CER above the limit |
+| 120M uint8 (ours), 4 | not run | | | see below |
+
+- 10 threads made the fp32 model faster at p50 but slower at p95 (up to 1112 ms). On this hybrid CPU, threads
+  that land on efficiency cores hold up the rest.
+- The uint8 copy passed on speed and failed on accuracy. Most of its extra error is one clip, s08 rendition
+  1, which it turned into "अग आप च मै आपको हमारे एगज से जोड़ता है" (dropped syllables) where fp32 was nearly
+  right. A model that silently drops parts of words is not acceptable for a banking agent.
+- uint8 with 4 threads was not run. Thread count doesn't change the transcripts (fp32 gave identical
+  transcripts at 4 and 10 threads), so it would fail the same CER condition.
+
+**None passes, so Amendment 6's fallback applies, as written before these runs:** the fastest model within
+the CER condition goes into Milestone 2. Only 120M fp32 meets the CER condition, and 4 threads is its faster
+setting at p95 (569 vs 834 ms), which also leaves cores for Laghu and turn detection. Milestone 2 transcribes
+speculatively while the caller speaks, and rule 3 is judged there: p95 time from end of speech to final
+transcript ≤ 400 ms.
+
+**Milestone 0 decisions**
+
+| Question | Decision |
+|---|---|
+| LLM | `openai/gpt-oss-20b` on Groq, recorded as missing rule 1's p95 by 18 ms; a pre-synthesised filler covers replies slower than 500 ms (Amendment 2) |
+| First-clause segments | off; FLEURS recheck in Milestone 2 only if early clauses save real LLM waiting time (Amendment 5) |
+| STT | IndicConformer Hindi 120M, ONNX fp32, 4 threads, speculative decoding; rule 3 rejudged in Milestone 2 |
+| Voice | male; never says नमस्ते; fixed lines rendered ahead of time and checked (Amendments 3 to 5) |
+| Groq Whisper | not used: wrong numbers and misheard "लोन" on these clips (Amendment 5) |
+
