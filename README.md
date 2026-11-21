@@ -7,16 +7,16 @@ latency traces. No Pipecat or LiveKit. Design: see the design plan doc (Laghu Vo
 
 | Part | Status |
 | --- | --- |
-| Speaking path: text in, streamed Laghu audio out, real-time pacing | Built, tested with a stub TTS. Needs one run with the real model (below) |
-| Barge-in: epochs, flush, nothing stale sent after a stop | Built, tested over a real WebSocket |
+| Speaking path: text in, streamed Laghu audio out, real-time pacing | Built; 34 ms to first audio with the real model (Milestone 1) |
+| Barge-in: epochs, flush, nothing stale sent after a stop | Built; 0.22 ms server-side with the real model |
 | Banking text: PAN digits, English loanwords | Built on top of Laghu's own frontend, tested |
-| Per-turn traces (JSONL) | Built |
-| Groq LLM client (streaming, gpt-oss reasoning turned down) | Built, tested against a mocked API. Not yet called for real |
-| Milestone 0 probes (Groq, Laghu, IndicConformer) | Written, wiring checked with fakes. **Yours to run** |
-| Listening path (VAD, Smart Turn, STT), dialog, eval | Not started (Milestones 2–5) |
+| Per-turn traces (JSONL) | Built, for agent turns and caller turns |
+| Milestone 0 probes and decisions | Done: see `m0\DECISION_RULES.md`, Amendment 7 |
+| Listening path: Silero VAD, Smart Turn, IndicConformer 120M, speculative STT, echo reply | Built (Milestone 2), tested with stand-ins. **First real run is yours** (below) |
+| Barge-in from the caller's voice, dialog, eval | Not started (Milestones 3–5) |
 
-Nothing here has run against the real Laghu weights, Groq or IndicConformer yet: the build machine couldn't
-reach Hugging Face. The first run of each is yours, and so is the first run of `scripts/get_laghu.py`.
+The build machine can't reach Hugging Face, so Smart Turn and IndicConformer have only run on your machine;
+Silero VAD and the mel features were checked here (the mel features match Whisper's to 6e-6).
 
 ## Setup (Windows PowerShell)
 
@@ -26,7 +26,12 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
 python scripts\get_laghu.py
+python scripts\get_listen_models.py
 ```
+
+`get_listen_models.py` puts the listening models in `vendor\`: Silero VAD (2.3 MB, from its GitHub release,
+checksum verified), Smart Turn v3.2 int8 (8.7 MB) and the Hindi IndicConformer 120M (about 480 MB; copied from
+`m0\out\hi120m` if Milestone 0 already downloaded it).
 
 The last line downloads Laghu from its Hugging Face repo into `vendor\laghu\`, about 31 MB:
 
@@ -49,7 +54,7 @@ with `clone.py`, copy its `.npy` into `vendor\laghu\model\voices\` and set `LAGH
 ```powershell
 python -m pytest
 ```
-Expect `34 passed`. The last of them runs the real model. To see its timing, run it on its own:
+Expect `48 passed`. Tests that need a model you haven't downloaded are skipped, and say which script to run. To see its timing, run it on its own:
 
 ```powershell
 python -m pytest tests/test_laghu_adapter.py -k real -s
@@ -58,14 +63,28 @@ It prints Laghu's time to first audio through the server's adapter. Send me that
 
 ## Talk to it
 
+**By voice (Milestone 2).** Use headphones: the server ignores the mic while the agent speaks, but a speaker
+next to the mic still leaks.
+
 Terminal 1 (the server):
 ```powershell
 python -m laghu_voice.server --tts laghu
 ```
 Terminal 2 (the client):
 ```powershell
-python clients\cli\client.py
+python clients\cli\client.py --mic
 ```
+Speak a Hindi sentence and stop. The agent says back what it heard ("मैंने सुना: ..."), and the client prints
+the transcript, what ended the turn, and how long after you stopped the transcript and the turn end came.
+`--show-vad` also prints when the server hears you start and pause.
+
+No mic, or to repeat a test exactly: start the client without `--mic` and type
+`/wav m0\out\laghu_male\sentence\s04_r0.wav`. The client sends the recording as your voice, in real time.
+
+Server options: `--listen stub` (no listening models: loudness VAD and a fixed transcript), `--listen off`
+(Milestone 1 behaviour), `--no-turn-model` (end turns after 700 ms of silence), `--dialog none` (listen only).
+
+**By typing (Milestone 1).** Start the server with `--listen off` and the client without `--mic`.
 Type Hindi and press Enter to hear it. `/stop` interrupts, `/file story.txt` speaks a UTF-8 file (PowerShell can
 garble typed Hindi), `/quit` hangs up. After each turn the client prints its outcome and timing. Every turn is
 also written to `traces\<session>.jsonl`.
@@ -96,6 +115,16 @@ python m0\probe_stt.py --voice female     # female clips, for the record
 Send me the printed summaries and `m0\out\groq_replies.jsonl`. Listen to a few WAVs in `m0\out\laghu_male\clause`
 before believing any CER number.
 
+## Milestone 2: the listening probe
+
+Rules first: `m2\DECISION_RULES.md`. Commit it, then:
+
+```powershell
+python m2\probe_listen.py
+```
+It streams the 30 male sentence clips from Milestone 0 into the listener in real time (about 2.5 minutes) and
+prints rules M2-1 to M2-3. Send me the printed summary and `m2\out\listen_runs.jsonl`.
+
 ## Layout
 
 ```
@@ -106,7 +135,14 @@ laghu_voice/
   orchestrator/
     session.py           one call: segmenter -> TTS worker -> pacer; epochs and interrupt
     pacing.py            real-time sending, at most 200 ms ahead of the listener
+    listener.py          the caller's side: VAD windows, segments cut at pauses, speculative STT, end of turn
+  audio/
+    vad.py               Silero VAD v5 (ONNX), one state per call
+    turn.py              Smart Turn v3.2: last 8 s of audio -> P(turn finished)
+    mel.py               Whisper log-mel features in NumPy (no transformers needed)
+  dialog/echo.py         Milestone 2's stand-in dialog: says back the transcript
   services/
+    stt_indic.py         IndicConformer Hindi 120M through onnx-asr, one worker thread
     tts_laghu.py         Laghu's OnnxTTS as an async stream with a stop event
     tts_stub.py          stand-in TTS with fixed timing
     llm_openai.py        Groq / any OpenAI-compatible streaming client
@@ -117,14 +153,18 @@ laghu_voice/
   transport/ws_server.py WebSocket protocol
   obs/trace.py           per-turn JSONL traces
 clients/cli/client.py    terminal client
+scripts/                 get_laghu.py, get_listen_models.py
 m0/                      Milestone 0 probes and decision rules
+m2/                      Milestone 2 listening probe and decision rules
 tests/                   pytest suite
 ```
 
 ## Protocol (WebSocket, JSON control + binary audio)
 
 Client to server: `{"type":"say","text":...}`, `{"type":"interrupt"}`, `{"type":"playback","segment_id":3,"samples":4800}`,
-`{"type":"hangup"}`. Binary: microphone PCM16 at 16 kHz (accepted, used from Milestone 2).
+`{"type":"hangup"}`. Binary: microphone PCM16 little-endian, 16 kHz mono, sent continuously (silence too: the
+listener counts silence on the audio clock).
 
-Server to client: `ready`, `segment_start`, `flush`, `turn_trace`, `error`. Binary: `uint32 epoch, uint32 segment_id`
+Server to client: `ready`, `segment_start`, `flush`, `turn_trace`, `error`, `vad` (`speech` true/false),
+`user_turn` (`text` and the turn's trace). Binary: `uint32 epoch, uint32 segment_id`
 (little-endian) followed by PCM16 mono 24 kHz. The client drops audio from an epoch older than the last flush.

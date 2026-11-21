@@ -49,5 +49,13 @@ class Settings:
     llm_model: str = field(default_factory=lambda: _env("LLM_MODEL", "openai/gpt-oss-20b"))
     llm_extra: dict = field(default_factory=lambda: json.loads(_env("LLM_EXTRA_JSON", "{}")))
 
+    # Listening (Milestone 2). full: Silero VAD + Smart Turn + IndicConformer from vendor/
+    # (scripts/get_listen_models.py); stub: loudness VAD, silence timeout, fixed transcript; off: no listening.
+    listen: str = field(default_factory=lambda: _env("LV_LISTEN", "full"))
+    turn_model: bool = field(default_factory=lambda: _env("LV_TURN_MODEL", "1") == "1")
+    stt_threads: int = field(default_factory=lambda: int(_env("STT_THREADS", "4")))
+    # What happens after the caller's turn: echo (say back the transcript) or none (Milestone 2)
+    dialog: str = field(default_factory=lambda: _env("LV_DIALOG", "echo"))
+
     # Observability
     trace_dir: Path = field(default_factory=lambda: Path(_env("LV_TRACE_DIR", "traces")))

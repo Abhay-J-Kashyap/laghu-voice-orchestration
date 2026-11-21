@@ -1,9 +1,12 @@
-"""Terminal client: type Hindi text, hear Laghu say it, type /stop to barge in.
+"""Terminal client: talk to the agent, or type Hindi text and hear Laghu say it.
 
-    python clients/cli/client.py                         # plays through your speakers (needs sounddevice)
+    python clients/cli/client.py --mic                   # speak into the microphone (Milestone 2)
+    python clients/cli/client.py                         # no mic: type text; /wav plays a recording as your voice
     python clients/cli/client.py --no-audio --save out.wav   # no sound device: plays silently in real time, saves
 
-Commands: any text = say it; /file story.txt = say a UTF-8 file; /stop = interrupt; /quit = hang up.
+Commands: any text = say it; /file story.txt = say a UTF-8 file; /wav clip.wav = send a recording to the
+server as if you had spoken it; /stop = interrupt; /quit = hang up.
+Without --mic the client still sends silence continuously, so the server can tell when a /wav turn ends.
 The client keeps a small playback buffer, reports how much of each segment it has played, and drops its
 buffer when the server says "flush". Audio from an older epoch is dropped too, as a second safety net.
 """
@@ -25,6 +28,24 @@ sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[2]
 from laghu_voice.frames import unpack_audio  # noqa: E402
 
 SR = 24_000
+MIC_SR = 16_000
+MIC_FRAME = 320          # 20 ms
+
+
+def load_wav_16k(path: str) -> np.ndarray:
+    """Any WAV/FLAC as int16 mono 16 kHz."""
+    import soundfile as sf
+    from math import gcd
+
+    x, sr = sf.read(path, dtype="float32")
+    if x.ndim > 1:
+        x = x.mean(1)
+    if sr != MIC_SR:
+        from scipy.signal import resample_poly
+
+        g = gcd(sr, MIC_SR)
+        x = resample_poly(x, MIC_SR // g, sr // g)
+    return (np.clip(x, -1, 1) * 32767).astype(np.int16)
 
 
 class Player:
@@ -82,7 +103,45 @@ async def main_async(a) -> None:
         stream = sd.OutputStream(samplerate=SR, channels=1, dtype="int16", blocksize=960, callback=cb)
         stream.start()
 
+    loop = asyncio.get_running_loop()
+    mic_q: asyncio.Queue[bytes] = asyncio.Queue()
+    mic = None
+    if a.mic:
+        import sounddevice as sd
+
+        def mic_cb(indata, frames, _time, _status):
+            loop.call_soon_threadsafe(mic_q.put_nowait, bytes(indata))
+
+        mic = sd.RawInputStream(samplerate=MIC_SR, channels=1, dtype="int16", blocksize=MIC_FRAME, callback=mic_cb)
+        mic.start()
+    wav_q: asyncio.Queue[np.ndarray] = asyncio.Queue()
+
     async with connect(a.url, max_size=2**20) as ws:
+        async def send_mic():
+            while True:
+                await ws.send(await mic_q.get())
+
+        async def send_wav_and_silence():
+            """No mic: stream /wav recordings in real time, silence in between (20 ms frames)."""
+            silence = np.zeros(MIC_FRAME, np.int16)
+            current, pos = None, 0
+            t_next = time.perf_counter()
+            while True:
+                if current is None and not wav_q.empty():
+                    current, pos = wav_q.get_nowait(), 0
+                if current is not None:
+                    frame = current[pos:pos + MIC_FRAME]
+                    pos += MIC_FRAME
+                    if pos >= len(current):
+                        current = None
+                    if len(frame) < MIC_FRAME:
+                        frame = np.concatenate([frame, silence[:MIC_FRAME - len(frame)]])
+                else:
+                    frame = silence
+                await ws.send(frame.tobytes())
+                t_next += MIC_FRAME / MIC_SR
+                await asyncio.sleep(max(0.0, t_next - time.perf_counter()))
+
         async def virtual_playback():  # no sound device: consume audio at real-time pace anyway
             t_last = time.perf_counter()
             while True:
@@ -127,6 +186,14 @@ async def main_async(a) -> None:
                     if stop is not None:
                         parts.append(f"interrupt handled in {stop:.1f} ms")
                     print("  [" + ", ".join(parts) + "]")
+                elif kind == "user_turn":
+                    lat = ev["trace"].get("latency_ms", {})
+                    print(f"you: {ev['text'] or '(nothing recognised)'}")
+                    print(f"  [turn ended by {ev['trace'].get('end_reason')}: transcript ready "
+                          f"{lat.get('speech_end_to_transcript', 0):.0f} ms after you stopped, turn ended "
+                          f"{lat.get('speech_end_to_turn_end', 0):.0f} ms after]")
+                elif kind == "vad" and a.show_vad:
+                    print("  (speaking)" if ev["speech"] else "  (pause)")
                 elif kind == "error":
                     print(f"  [server error: {ev['error']}]")
 
@@ -145,13 +212,22 @@ async def main_async(a) -> None:
                     return
                 if line == "/stop":
                     await ws.send(json.dumps({"type": "interrupt", "reason": "user_typed_stop"}))
+                elif line.startswith("/wav "):
+                    if a.mic:
+                        print("  [/wav needs the client started without --mic]")
+                    else:
+                        try:
+                            wav_q.put_nowait(await loop.run_in_executor(None, load_wav_16k, line[5:].strip()))
+                        except Exception as e:  # noqa: BLE001
+                            print(f"  [could not read {line[5:].strip()}: {e}]")
                 elif line.startswith("/file "):   # PowerShell can garble typed Hindi; a UTF-8 file can't
                     text = open(line[6:].strip(), encoding="utf-8-sig").read().strip()
                     await ws.send(json.dumps({"type": "say", "text": text}))
                 else:
                     await ws.send(json.dumps({"type": "say", "text": line}))
 
-        tasks = [asyncio.create_task(receive()), asyncio.create_task(report_playback())]
+        tasks = [asyncio.create_task(receive()), asyncio.create_task(report_playback()),
+                 asyncio.create_task(send_mic() if a.mic else send_wav_and_silence())]
         if stream is None:
             tasks.append(asyncio.create_task(virtual_playback()))
         await read_stdin()
@@ -162,6 +238,9 @@ async def main_async(a) -> None:
     if stream is not None:
         stream.stop()
         stream.close()
+    if mic is not None:
+        mic.stop()
+        mic.close()
     if a.save:
         audio = np.concatenate(player.recorded) if player.recorded else np.zeros(0, np.int16)
         with wave.open(a.save, "wb") as w:
@@ -174,6 +253,8 @@ def main() -> None:
     ap.add_argument("--url", default="ws://127.0.0.1:8765")
     ap.add_argument("--no-audio", action="store_true", help="no sound device: play silently in real time")
     ap.add_argument("--save", help="write everything played to this WAV file")
+    ap.add_argument("--mic", action="store_true", help="send the microphone (use headphones)")
+    ap.add_argument("--show-vad", action="store_true", help="print when the server hears speech start and stop")
     asyncio.run(main_async(ap.parse_args()))
 
 

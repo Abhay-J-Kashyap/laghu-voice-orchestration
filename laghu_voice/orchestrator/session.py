@@ -21,7 +21,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from ..config import Settings
-from ..frames import FRAME_SAMPLES_OUT, AudioOut, SpeakText
+from ..frames import FRAME_SAMPLES_OUT, SAMPLE_RATE_OUT, AudioOut, SpeakText
 from ..obs.trace import TraceWriter, Turn, now_ns
 from ..services.base import TTSResult, TTSService, float_to_pcm16
 from ..text.segmenter import Segmenter
@@ -69,6 +69,7 @@ class Session:
         self.segments: dict[int, SegmentState] = {}
         self._stop: threading.Event | None = None
         self._tasks: list[asyncio.Task] = []
+        self.playing_until_ns = 0      # when the client will have played everything sent so far (estimate)
 
     # ------------------------------------------------------------------ lifecycle
     def start(self) -> None:
@@ -130,6 +131,13 @@ class Session:
         if s is not None:
             s.samples_played = max(s.samples_played, samples_played)
 
+    def agent_busy(self, echo_tail_ms: float = 300.0) -> bool:
+        """True while a reply is being produced or its audio is still playing on the client, plus a short tail
+        for the room's echo. Milestone 2 keeps the mic closed during that time (half-duplex)."""
+        if any(not ts.finished for ts in self.turns.values()):
+            return True
+        return now_ns() < self.playing_until_ns + echo_tail_ms * 1e6
+
     async def interrupt(self, reason: str = "barge_in") -> None:
         """Barge-in: cancel everything from the current epoch and tell the client to drop its buffer."""
         t_in = now_ns()
@@ -140,6 +148,7 @@ class Session:
         while not self.text_q.empty():
             self.text_q.get_nowait()
         dropped = self.pacer.flush()
+        self.playing_until_ns = now_ns()
         await self._send_event({"type": "flush", "epoch": self.epoch})
         t_out = now_ns()
         for ts in self.turns.values():
@@ -199,6 +208,8 @@ class Session:
                                         "turn_id": f.turn_id, "text": seg.text})
             await self._send_audio(f)
             ts.trace.mark("first_audio_sent")
+            t = now_ns()     # the client plays continuously from arrival, so this frame ends after the queued ones
+            self.playing_until_ns = max(self.playing_until_ns, t) + int(f.n_samples * 1e9 / SAMPLE_RATE_OUT)
             seg.samples_sent += f.n_samples
         if f.last:
             seg.done = True

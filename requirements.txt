@@ -8,11 +8,11 @@ huggingface_hub   # scripts/get_laghu.py
 onnxruntime
 sentencepiece
 soundfile
-# CLI client (sound output)
+# Listening (Milestone 2): IndicConformer through onnx-asr; resampling of /wav recordings in the client
+onnx-asr
+scipy
+# CLI client (sound output and microphone)
 sounddevice
 # Tests
 pytest
 pytest-asyncio
-
-#others
-onnx-asr
