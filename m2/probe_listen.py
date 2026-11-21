@@ -87,7 +87,7 @@ async def main_async(a):
     vad = SileroVAD(vendor / "silero" / "silero_vad.onnx")
     turn = None if a.no_turn_model else SmartTurn(vendor / "smart_turn" / "smart-turn-v3.2-cpu.onnx")
     print(f"loading STT ({a.stt_threads} threads) ...")
-    stt = IndicConformerSTT(vendor / "stt_hi120m", threads=a.stt_threads)
+    stt = IndicConformerSTT(vendor / "stt_hi120m", threads=a.stt_threads, pad_s=a.stt_pad_s)
     turns = []
 
     async def on_turn(t):
@@ -122,8 +122,8 @@ async def main_async(a):
               f"({row.get('end_reason')}) | {text}")
     out = HERE / "out"
     out.mkdir(exist_ok=True)
-    name = ("listen_runs" + ("_no_turn_model" if a.no_turn_model else "") + ("_diag" if a.dump else "")
-            + ".jsonl")
+    name = ("listen_runs" + ("" if a.voice == "male" else f"_{a.voice}")
+            + ("_no_turn_model" if a.no_turn_model else "") + ("_diag" if a.dump else "") + ".jsonl")
     with (out / name).open("w", encoding="utf-8") as f:
         for row in rows:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
@@ -139,7 +139,7 @@ async def main_async(a):
     st_ms = [c["ms"] for r in heard for c in r["turn_checks"]]
     print(f"\n{len(rows)} clips, {a.voice} voice, STT {a.stt_threads} threads, "
           f"{'no turn model' if a.no_turn_model else 'Smart Turn v3.2'}, spec {a.spec_ms} ms, tail {a.tail_ms} ms, "
-          f"segments cut at {a.max_segment_s} s")
+          f"segments cut at {a.max_segment_s} s, {a.stt_pad_s} s of silence around each")
     print(f"M2-1 end of speech -> final transcript: p50 {pct(tr, 50)} ms, p95 {pct(tr, 95)} ms -> "
           f"{'met' if tr and pct(tr, 95) <= 400 else 'not met'} (limit 400)")
     print(f"M2-2 in-loop CER (standard): {cer:.2f}% -> {'met' if cer <= 3.68 else 'not met'} (limit 3.68%)")
@@ -165,6 +165,7 @@ def main():
     ap.add_argument("--spec-ms", type=int, default=96)
     ap.add_argument("--tail-ms", type=int, default=96)
     ap.add_argument("--max-segment-s", type=float, default=10.0)
+    ap.add_argument("--stt-pad-s", type=float, default=0.25, help="silence added around each segment")
     ap.add_argument("--dump", help="diagnostics: save every decoded segment as a WAV in this folder")
     asyncio.run(main_async(ap.parse_args()))
 

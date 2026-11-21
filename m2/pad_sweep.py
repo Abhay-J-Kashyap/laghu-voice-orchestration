@@ -76,7 +76,7 @@ def main():
     model_text = {(r["id"], r["rendition"]): r["model_text"] for r in manifest if r["variant"] == "sentence"}
     clips = kept_segments(index_rows, runs, model_text)
     audio = {s["file"]: sf.read(dump / s["file"], dtype="float32")[0] for c in clips for s in c["segments"]}
-    stt = IndicConformerSTT(ROOT / "vendor" / "stt_hi120m")
+    stt = IndicConformerSTT(ROOT / "vendor" / "stt_hi120m", pad_s=0.0)   # this script adds the silence itself
     out = []
     print(f"{len(clips)} clips, {len(audio)} kept segments")
     for lead, trail in VARIANTS:

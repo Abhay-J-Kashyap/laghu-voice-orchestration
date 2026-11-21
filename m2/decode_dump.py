@@ -27,7 +27,7 @@ def main():
 
     d = Path(sys.argv[1] if len(sys.argv) > 1 else ROOT / "m2" / "out" / "dump")
     rows = [json.loads(l) for l in open(d / "index.jsonl", encoding="utf-8")]
-    stt = IndicConformerSTT(ROOT / "vendor" / "stt_hi120m")
+    stt = IndicConformerSTT(ROOT / "vendor" / "stt_hi120m", pad_s=0.0)   # as the listener decoded in Amendment 2
     pad = np.zeros(8000, np.float32)
     same = 0
     out = []

@@ -51,7 +51,7 @@ def build_listen(settings: Settings):
     vad = SileroVAD(VENDOR / "silero" / "silero_vad.onnx")
     turn = SmartTurn(VENDOR / "smart_turn" / "smart-turn-v3.2-cpu.onnx") if settings.turn_model else None
     logging.info("loading the STT model (%d threads) ...", settings.stt_threads)
-    stt = IndicConformerSTT(VENDOR / "stt_hi120m", threads=settings.stt_threads)
+    stt = IndicConformerSTT(VENDOR / "stt_hi120m", threads=settings.stt_threads, pad_s=settings.stt_pad_s)
     return ListenModels(vad, stt, turn)
 
 

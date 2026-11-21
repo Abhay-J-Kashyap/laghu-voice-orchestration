@@ -52,7 +52,8 @@ class ListenConfig:
     silence_only_ms: int = 700    # end of turn when there is no turn model
     turn_threshold: float = 0.5
     max_segment_s: float = 10.0   # while the caller keeps talking, cut the open segment at its quietest point
-                                  # once it is this long (3 s was tried in Milestone 2 run 2: it broke accuracy)
+                                  # once it is this long. 3 s was tried twice and cost accuracy both times, with and
+                                  # without the STT's silence padding (Milestone 3, Amendment 2)
     dump_dir: str | None = None   # diagnostics: save every decoded segment as a WAV, with its transcript
 
 

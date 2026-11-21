@@ -44,8 +44,12 @@ class STTBase:
 
 
 class IndicConformerSTT(STTBase):
-    def __init__(self, path: Path, threads: int = 4):
+    """pad_s: silence added before and after every segment. This export misreads audio that starts or stops
+    right at the speech (Milestone 2, Amendment 3: CER 16.6% without, 3.9% with 0.25 s on each side)."""
+
+    def __init__(self, path: Path, threads: int = 4, pad_s: float = 0.25):
         super().__init__()
+        self.pad = np.zeros(int(pad_s * 16000), np.float32)
         import onnx_asr
         import onnxruntime as ort
 
@@ -59,7 +63,8 @@ class IndicConformerSTT(STTBase):
     def transcribe(self, audio: np.ndarray) -> str:
         if len(audio) < 1600:          # under 0.1 s: nothing to decode
             return ""
-        out = self.model.recognize(np.asarray(audio, dtype=np.float32), sample_rate=16000)
+        x = np.concatenate([self.pad, np.asarray(audio, dtype=np.float32), self.pad])
+        out = self.model.recognize(x, sample_rate=16000)
         return clean_ctc(out if isinstance(out, str) else getattr(out, "text", str(out)))
 
 

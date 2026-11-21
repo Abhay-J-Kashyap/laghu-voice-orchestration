@@ -131,3 +131,27 @@ Next, still diagnostic: `pad_sweep.py` tries eight amounts of silence before and
 segments and times each. These clips are now used for tuning, so the padding it picks is judged in
 Milestone 3 on clips it was not tuned on (the female clips in `m0/out/laghu_female`) and on live speech,
 under rules written before those runs.
+
+### Amendment 4 (21 Nov 2026), padding sweep; Milestone 2 closed
+
+`pad_sweep.py`, 82 kept segments from the 3 s-cut diagnostic run (CER over 30 clips; decode time per segment):
+
+| Silence before / after | CER | decode p50 / p95 |
+|---|---|---|
+| 0 / 0 | 16.56% | 93 / 135 ms |
+| 0.1 / 0.1 s | 4.27% | 105 / 204 ms |
+| **0.25 / 0.25 s** | **3.85%** | 136 / 185 ms |
+| 0.5 / 0.5 s | 3.80% | 212 / 321 ms |
+| 0 / 0.25 s | 6.51% | 175 / 250 ms |
+| 0.25 / 0 s | 4.84% | 125 / 167 ms |
+| 0 / 0.5 s | 7.08% | 136 / 188 ms |
+| 0.5 / 0 s | 5.31% | 130 / 188 ms |
+
+Silence is needed on both sides, and 0.25 s gets almost all of what 0.5 s does for less decode time. Chosen:
+**0.25 s of silence on each side of every segment, and segments cut at 3 s again.** Both were tuned on these
+male clips, so they are judged in Milestone 3 (`m3/DECISION_RULES.md`) on the female clips and on live
+speech. The decode times above vary between rows more than padding explains (0 / 0.25 s is slower than
+0.25 / 0.25 s), so the in-loop run, not this table, is the latency measurement.
+
+Milestone 2 ends with its own rules recorded as: M2-1 missed (487 ms), M2-2 failed, M2-3 failed, and the
+cause of M2-2 found and fixed.

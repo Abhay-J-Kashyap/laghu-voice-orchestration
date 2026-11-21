@@ -54,6 +54,7 @@ class Settings:
     listen: str = field(default_factory=lambda: _env("LV_LISTEN", "full"))
     turn_model: bool = field(default_factory=lambda: _env("LV_TURN_MODEL", "1") == "1")
     stt_threads: int = field(default_factory=lambda: int(_env("STT_THREADS", "4")))
+    stt_pad_s: float = field(default_factory=lambda: float(_env("STT_PAD_S", "0.25")))  # silence around segments
     # What happens after the caller's turn: echo (say back the transcript) or none (Milestone 2)
     dialog: str = field(default_factory=lambda: _env("LV_DIALOG", "echo"))
 
