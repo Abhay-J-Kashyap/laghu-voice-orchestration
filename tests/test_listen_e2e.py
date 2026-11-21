@@ -26,14 +26,15 @@ def speech(ms):
     return 0.3 * np.sin(2 * np.pi * 220 * t)
 
 
-@pytest.fixture
-async def server(tmp_path):
+@pytest.fixture(params=[True, False], ids=["half_duplex", "barge_in"])
+async def server(tmp_path, request):
     settings = Settings()
     settings.trace_dir = tmp_path
+    settings.half_duplex = request.param
     listen = ListenModels(EnergyVAD(), StubSTT("हाँ जी", ms_per_second=50), None)
     async with serve(make_handler(StubTTS(first_audio_ms=5, rtf=50, ms_per_char=20), settings, listen=listen),
                      "127.0.0.1", 0) as srv:
-        yield f"ws://127.0.0.1:{srv.sockets[0].getsockname()[1]}", tmp_path
+        yield f"ws://127.0.0.1:{srv.sockets[0].getsockname()[1]}", tmp_path, settings.half_duplex
 
 
 async def stream(ws, x, speed=4.0):
@@ -44,7 +45,7 @@ async def stream(ws, x, speed=4.0):
 
 
 async def test_spoken_turn_is_transcribed_and_echoed(server):
-    url, trace_dir = server
+    url, trace_dir, half_duplex = server
     events = []
     async with connect(url) as ws:
         async def recv():
@@ -57,12 +58,21 @@ async def test_spoken_turn_is_transcribed_and_echoed(server):
             if any(e["type"] == "segment_start" for e in events):
                 break
             await asyncio.sleep(0.05)
-        # while the reply plays, the mic is closed: this speech must not start a second turn
+        # speech over the reply: ignored in half duplex, a barge-in otherwise
         await stream(ws, np.concatenate([speech(600), np.zeros(SR)]))
-        await asyncio.sleep(0.3)
+        await asyncio.sleep(0.5)
         r.cancel()
     turns = [e for e in events if e["type"] == "user_turn"]
-    assert len(turns) == 1 and turns[0]["text"] == "हाँ जी"
+    kinds = [e["type"] for e in events]
+    if half_duplex:
+        assert len(turns) == 1 and "duck" not in kinds and "barge_in" not in kinds
+    else:
+        assert len(turns) == 2 and turns[1]["trace"]["barged_in"] and not turns[1]["backchannel"]
+        assert kinds.index("duck") < kinds.index("barge_in") and "flush" in kinds
+        lat = turns[1]["trace"]["latency_ms"]
+        assert lat["speech_start_to_duck_sent"] <= lat["speech_start_to_barge_in"] <= lat["speech_start_to_flush_sent"]
+        assert "heard" not in turns[1]["trace"]                 # heard text goes on the agent's turn
+    assert turns[0]["text"] == "हाँ जी"
     assert turns[0]["trace"]["end_reason"] == "silence_only"
     assert "speech_end_to_transcript" in turns[0]["trace"]["latency_ms"]
     said = [e["text"] for e in events if e["type"] == "segment_start"]
@@ -70,3 +80,35 @@ async def test_spoken_turn_is_transcribed_and_echoed(server):
     assert [e["speech"] for e in events if e["type"] == "vad"][0] is True
     lines = (trace_dir / f"{events[0]['session_id']}.jsonl").read_text(encoding="utf-8").splitlines()
     assert any(json.loads(l).get("kind") == "user" for l in lines)
+
+
+async def test_short_speech_over_the_agent_is_a_backchannel(tmp_path):
+    settings = Settings()
+    settings.trace_dir = tmp_path
+    listen = ListenModels(EnergyVAD(), StubSTT("हाँ", ms_per_second=50), None)
+    async with serve(make_handler(StubTTS(first_audio_ms=5, rtf=50, ms_per_char=60), settings, listen=listen),
+                     "127.0.0.1", 0) as srv:
+        url = f"ws://127.0.0.1:{srv.sockets[0].getsockname()[1]}"
+        events = []
+        async with connect(url) as ws:
+            async def recv():
+                async for m in ws:
+                    if isinstance(m, str):
+                        events.append(json.loads(m))
+            r = asyncio.create_task(recv())
+            await ws.send(json.dumps({"type": "say", "text": "यह एक लंबा वाक्य है जो काफ़ी देर तक चलेगा।"}))
+            for _ in range(100):
+                if any(e["type"] == "segment_start" for e in events):
+                    break
+                await asyncio.sleep(0.02)
+            await asyncio.sleep(0.3)
+            # 160 ms of speech: shorter than the 250 ms barge-in threshold
+            await stream(ws, np.concatenate([speech(160), np.zeros(int(SR * 1.2))]), speed=1.0)
+            await asyncio.sleep(0.3)
+            r.cancel()
+    kinds = [e["type"] for e in events]
+    turns = [e for e in events if e["type"] == "user_turn"]
+    assert "duck" in kinds and "unduck" in kinds and "barge_in" not in kinds and "flush" not in kinds
+    assert len(turns) == 1 and turns[0]["backchannel"]
+    said = [e["text"] for e in events if e["type"] == "segment_start"]
+    assert not any(t.startswith("मैंने सुना") for t in said)      # a backchannel gets no reply

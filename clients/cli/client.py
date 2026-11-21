@@ -4,8 +4,10 @@
     python clients/cli/client.py                         # no mic: type text; /wav plays a recording as your voice
     python clients/cli/client.py --no-audio --save out.wav   # no sound device: plays silently in real time, saves
 
-Commands: any text = say it; /file story.txt = say a UTF-8 file; /wav clip.wav = send a recording to the
-server as if you had spoken it; /stop = interrupt; /quit = hang up.
+Commands: any text = say it (with the agent, --dialog agent: a typed caller turn instead); /say text = make the
+agent say it; /file story.txt = say a UTF-8 file; /textfile lines.txt = send the file's next line as a caller
+turn; /wav clip.wav = send a recording to the server as if you had spoken it; /stop = interrupt; /quit = hang up.
+With the agent, the client prints the demo passcode to read out, and exits when the agent ends the call.
 Without --mic the client still sends silence continuously, so the server can tell when a /wav turn ends.
 The client keeps a small playback buffer, reports how much of each segment it has played, and drops its
 buffer when the server says "flush". Audio from an older epoch is dropped too, as a second safety net.
@@ -28,6 +30,7 @@ sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[2]
 from laghu_voice.frames import unpack_audio  # noqa: E402
 
 SR = 24_000
+DUCK = 0.3               # agent volume while the caller talks over it
 MIC_SR = 16_000
 MIC_FRAME = 320          # 20 ms
 
@@ -57,6 +60,7 @@ class Player:
         self.min_epoch = 0
         self.played: dict[int, int] = {}
         self.recorded: list[np.ndarray] = []
+        self.volume = 1.0              # lowered to DUCK while the caller talks over the agent
 
     def feed(self, epoch: int, segment_id: int, pcm: bytes) -> None:
         x = np.frombuffer(pcm, dtype="<i2")
@@ -69,6 +73,7 @@ class Player:
         with self.lock:
             self.min_epoch = epoch
             self.chunks.clear()
+            self.volume = 1.0
 
     def pull(self, n: int) -> np.ndarray:
         out = np.zeros(n, dtype=np.int16)
@@ -84,12 +89,15 @@ class Player:
                 self.played[sid] = self.played.get(sid, 0) + take
                 if c[2] >= len(x):
                     self.chunks.popleft()
+        if self.volume != 1.0:
+            out = (out.astype(np.float32) * self.volume).astype(np.int16)
         self.recorded.append(out[:k].copy())
         return out
 
 
 async def main_async(a) -> None:
     player = Player()
+    state = {"agent": False, "ended": False, "textfile_pos": {}}
     stream = None
     if not a.no_audio:
         try:
@@ -171,6 +179,11 @@ async def main_async(a) -> None:
                 kind = ev.get("type")
                 if kind == "ready":
                     print(f"[connected: session {ev['session_id']}]")
+                    if ev.get("dialog") == "agent":
+                        state["agent"] = True
+                        print("[the agent will speak first. Talk (--mic), /wav a recording, or type a caller turn "
+                              "(PowerShell garbles typed Hindi: /textfile file.txt sends a UTF-8 file's line); "
+                              "/say makes the agent say text]")
                 elif kind == "segment_start":
                     print(f"  > {ev['text']}")
                 elif kind == "flush":
@@ -181,17 +194,43 @@ async def main_async(a) -> None:
                     first = ms.get("first_audio_sent")
                     stop = (ms["flush_sent"] - ms["interrupt_received"]) if "flush_sent" in ms else None
                     parts = [f"{ev['trace']['outcome']}"]
+                    heard = ev["trace"].get("heard")
+                    if heard:
+                        parts.append(f"you heard about {heard['played_s']:.1f} s")
                     if first is not None:
                         parts.append(f"first audio sent {first:.0f} ms after text")
                     if stop is not None:
                         parts.append(f"interrupt handled in {stop:.1f} ms")
                     print("  [" + ", ".join(parts) + "]")
+                elif kind == "duck":
+                    player.volume = DUCK
+                elif kind == "unduck":
+                    player.volume = 1.0
+                elif kind == "barge_in":
+                    print("  [you interrupted: agent stopped]")
+                elif kind == "user_turn" and ev.get("backchannel"):
+                    print(f"you (over the agent, not an interruption): {ev['text']}")
                 elif kind == "user_turn":
                     lat = ev["trace"].get("latency_ms", {})
+                    if "speech_start_to_flush_sent" in lat:
+                        print(f"  [agent stopped {lat['speech_start_to_flush_sent']:.0f} ms after you started]")
                     print(f"you: {ev['text'] or '(nothing recognised)'}")
                     print(f"  [turn ended by {ev['trace'].get('end_reason')}: transcript ready "
                           f"{lat.get('speech_end_to_transcript', 0):.0f} ms after you stopped, turn ended "
                           f"{lat.get('speech_end_to_turn_end', 0):.0f} ms after]")
+                elif kind == "dialog" and ev.get("show"):
+                    for k, v in ev["show"].items():
+                        print(f"  [{k.replace('_', ' ')}: {' '.join(str(v))}  <- read this out]")
+                elif kind == "dialog":
+                    tools = ", ".join(f"{t['tool']}: {t['outcome']} ({t['ms']:.0f} ms)" for t in ev.get("tools") or [])
+                    if a.show_dialog or tools:
+                        llm = f", LLM {'+'.join(map(str, ev['llm_ms']))} ms" if ev.get("llm_ms") else ""
+                        filler = ", filler played" if ev.get("filler") else ""
+                        print(f"  [agent: {ev.get('event') or 'start'} -> {ev.get('state') or ev.get('end')}"
+                              f" ({ev.get('path') or '-'}{llm}{filler}){'; ' + tools if tools else ''}]")
+                elif kind == "end_call":
+                    print(f"[call ended by the agent: {ev['reason']}; backend session {ev.get('backend_session')}]")
+                    state["ended"] = True
                 elif kind == "vad" and a.show_vad:
                     print("  (speaking)" if ev["speech"] else "  (pause)")
                 elif kind == "error":
@@ -199,8 +238,16 @@ async def main_async(a) -> None:
 
         async def read_stdin():
             loop = asyncio.get_running_loop()
+            lines: asyncio.Queue[str] = asyncio.Queue()
+
+            def reader():   # a daemon thread, so a blocked readline doesn't keep the client alive at the end
+                for raw in sys.stdin:
+                    loop.call_soon_threadsafe(lines.put_nowait, raw)
+                loop.call_soon_threadsafe(lines.put_nowait, "")
+
+            threading.Thread(target=reader, daemon=True).start()
             while True:
-                line = await loop.run_in_executor(None, sys.stdin.readline)
+                line = await lines.get()
                 if not line:
                     await ws.send(json.dumps({"type": "hangup"}))
                     return
@@ -223,6 +270,20 @@ async def main_async(a) -> None:
                 elif line.startswith("/file "):   # PowerShell can garble typed Hindi; a UTF-8 file can't
                     text = open(line[6:].strip(), encoding="utf-8-sig").read().strip()
                     await ws.send(json.dumps({"type": "say", "text": text}))
+                elif line.startswith("/textfile "):   # a caller turn from a file: the next unused line of it
+                    path = line[10:].strip()
+                    lines = [x.strip() for x in open(path, encoding="utf-8-sig") if x.strip()]
+                    k = state["textfile_pos"].get(path, 0)
+                    if k >= len(lines):
+                        print(f"  [no lines left in {path}]")
+                        continue
+                    state["textfile_pos"][path] = k + 1
+                    print(f"you (typed): {lines[k]}")
+                    await ws.send(json.dumps({"type": "text", "text": lines[k]}))
+                elif line.startswith("/say "):
+                    await ws.send(json.dumps({"type": "say", "text": line[5:]}))
+                elif state["agent"]:
+                    await ws.send(json.dumps({"type": "text", "text": line}))
                 else:
                     await ws.send(json.dumps({"type": "say", "text": line}))
 
@@ -230,7 +291,9 @@ async def main_async(a) -> None:
                  asyncio.create_task(send_mic() if a.mic else send_wav_and_silence())]
         if stream is None:
             tasks.append(asyncio.create_task(virtual_playback()))
-        await read_stdin()
+        stdin_task = asyncio.create_task(read_stdin())
+        await asyncio.wait([stdin_task, tasks[0]], return_when=asyncio.FIRST_COMPLETED)   # tasks[0]: receive()
+        stdin_task.cancel()
         await asyncio.sleep(0.2)
         for t in tasks:
             t.cancel()
@@ -255,6 +318,7 @@ def main() -> None:
     ap.add_argument("--save", help="write everything played to this WAV file")
     ap.add_argument("--mic", action="store_true", help="send the microphone (use headphones)")
     ap.add_argument("--show-vad", action="store_true", help="print when the server hears speech start and stop")
+    ap.add_argument("--show-dialog", action="store_true", help="print every step of the agent, not only tool calls")
     asyncio.run(main_async(ap.parse_args()))
 
 

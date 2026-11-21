@@ -93,3 +93,15 @@ async def test_pacer_keeps_client_buffer_small():
         assert sent_audio - (t - t0) <= 0.2 + 0.03, "more than the 200 ms lead was buffered at the client"
         sent_audio += f.n_samples / 24000
     await s.close()
+
+
+def test_heard_estimate_prorates_the_interrupted_segment():
+    from laghu_voice.orchestrator.session import SegmentState, heard_estimate
+    a = SegmentState(1, "t1", 0, "पहला वाक्य।", samples_sent=48000, samples_played=48000, done=True)
+    b = SegmentState(2, "t1", 0, "दूसरा वाक्य लंबा है।", samples_sent=48000, samples_played=24000)
+    c = SegmentState(3, "t1", 0, "तीसरा।", samples_sent=0, samples_played=0)
+    h = heard_estimate([a, b, c])
+    assert h["played_s"] == 3.0
+    assert h["text_estimate"].startswith("पहला वाक्य। दूसरा") and h["text_estimate"].endswith("…")
+    assert "तीसरा" not in h["text_estimate"]
+    assert heard_estimate([c]) == {"text_estimate": "", "played_s": 0.0}

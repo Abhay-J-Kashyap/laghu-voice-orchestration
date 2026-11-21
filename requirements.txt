@@ -13,6 +13,8 @@ onnx-asr
 scipy
 # CLI client (sound output and microphone)
 sounddevice
+# Dialog (Milestone 4): agent specs
+pyyaml
 # Tests
 pytest
 pytest-asyncio

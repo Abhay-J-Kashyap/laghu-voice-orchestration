@@ -51,6 +51,9 @@ class ListenConfig:
     silence_cap_ms: int = 1500    # end the turn after this much silence whatever the turn model says
     silence_only_ms: int = 700    # end of turn when there is no turn model
     turn_threshold: float = 0.5
+    hint_min_ms: int = 500        # the dialog's hint may end a turn only after this much silence (Milestone 4,
+                                  # Amendment 2): a one-word answer the dialog can already read ("शाम") needn't
+                                  # wait for the 1.5 s cap when the turn model doubts it
     max_segment_s: float = 10.0   # while the caller keeps talking, cut the open segment at its quietest point
                                   # once it is this long. 3 s was tried twice and cost accuracy both times, with and
                                   # without the STT's silence padding (Milestone 3, Amendment 2)
@@ -82,7 +85,7 @@ class Segment:
 class UserTurn:
     turn_id: str
     text: str
-    end_reason: str               # "turn_model", "silence_cap", "silence_only"
+    end_reason: str               # "turn_model", "dialog_hint", "silence_cap", "silence_only"
     audio: np.ndarray
     trace: Turn
     segments: list[Segment] = field(default_factory=list)
@@ -91,13 +94,17 @@ class UserTurn:
 class Listener:
     def __init__(self, vad_model, stt, turn_model, on_turn: Callable[[UserTurn], Awaitable[None]],
                  on_event: Callable[[dict], Awaitable[None]] | None = None, session_id: str = "",
-                 config: ListenConfig | None = None):
+                 config: ListenConfig | None = None,
+                 on_speech: Callable[[str, float, int], None] | None = None):
+        """on_speech(turn_id, speech_ms, t_ns) is called on every window of speech in a turn, with the speech
+        heard so far in that turn. The turn controller uses it for ducking and barge-in (Milestone 3)."""
         self.cfg = config or ListenConfig()
         self.vad = vad_model.stream()
         self.stt = stt
         self.turn_model = turn_model
         self.on_turn = on_turn
         self.on_event = on_event
+        self.on_speech = on_speech
         self.session_id = session_id
         self._ids = itertools.count(1)
         self._last_rms = 0.0
@@ -107,6 +114,8 @@ class Listener:
         self._turn_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="turn")
         self._tasks: set[asyncio.Task] = set()
         self.muted = False
+        # set by the dialog: does this transcript already answer what was asked? (text -> bool)
+        self.turn_hint: Callable[[str], bool] | None = None
         self.windows = 0
         self.vad_ns = 0
         self._reset_turn()
@@ -170,6 +179,7 @@ class Listener:
         self.wasted = 0
         self.ending = False
         self.open_rms: list[float] = []  # loudness of each window in the open segment (for cutting long ones)
+        self.speech_ms = 0.0             # speech heard in this turn so far
 
     def _step(self, w: np.ndarray, p: float, t_ns: int) -> None:
         if self.turn is None:
@@ -204,9 +214,12 @@ class Listener:
         self.committed = False
         self.speech_end = self.n
         self.turn.mark("speech_end", t_ns, first_only=False)
+        self.speech_ms = len(self._speech_run) * WIN_MS
         self._preroll.clear()
         self._speech_run = []
         self._emit({"type": "vad", "speech": True, "turn_id": turn_id})
+        if self.on_speech is not None:
+            self.on_speech(turn_id, self.speech_ms, t_ns)
 
     def _on_speech(self, p: float, t_ns: int) -> None:
         if not self.speaking:
@@ -224,7 +237,10 @@ class Listener:
             self._emit({"type": "vad", "speech": True, "turn_id": self.turn.turn_id})
         self.silence_ms = 0.0
         self.speech_end = self.n
+        self.speech_ms += WIN_MS
         self.turn.mark("speech_end", t_ns, first_only=False)
+        if self.on_speech is not None:
+            self.on_speech(self.turn.turn_id, self.speech_ms, t_ns)
         self.open_rms.append(self._last_rms)
         if (self.n - self.seg_start) / SR > self.cfg.max_segment_s:
             self._cut_long_segment()
@@ -327,8 +343,22 @@ class Listener:
             self.turn.mark("turn_check", t1, first_only=False)
             if prob >= self.cfg.turn_threshold:
                 self._end_turn("turn_model")
-            else:
-                self.next_check_ms = self.silence_ms + self.cfg.recheck_ms
+                return
+            self.next_check_ms = self.silence_ms + self.cfg.recheck_ms
+            if self.turn_hint is not None and silence >= self.cfg.hint_min_ms:
+                segments = list(self.segments)
+                await asyncio.gather(*(s.task for s in segments if s.task is not None), return_exceptions=True)
+                if self.turn is not turn or self.ending or gen != self.check_gen:
+                    return
+                text = " ".join(s.text for s in segments if s.text).strip()
+                try:
+                    done = bool(self.turn_hint(text))
+                except Exception:  # noqa: BLE001 - a broken hint must not break listening
+                    log.exception("turn hint failed")
+                    done = False
+                if done:
+                    self.checks[-1]["hint"] = True
+                    self._end_turn("dialog_hint")
         self._spawn(run())
 
     def _end_turn(self, reason: str) -> None:
@@ -340,7 +370,7 @@ class Listener:
         turn.mark("turn_end")
         segments = list(self.segments)
         audio = self._slice(0, self.n)
-        stats = {"wasted_decodes": self.wasted, "turn_checks": list(self.checks)}
+        stats = {"wasted_decodes": self.wasted, "turn_checks": list(self.checks), "speech_ms": round(self.speech_ms)}
         self._emit({"type": "vad", "speech": False, "turn_id": turn.turn_id, "turn_end": reason})
 
         async def finish():

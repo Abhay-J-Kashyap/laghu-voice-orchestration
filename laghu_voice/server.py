@@ -4,6 +4,10 @@
     python -m laghu_voice.server --tts laghu                     # Laghu from vendor/laghu (scripts/get_laghu.py)
     python -m laghu_voice.server --tts laghu --listen full       # + listening: Silero, Smart Turn, IndicConformer
     python -m laghu_voice.server --tts stub --listen stub        # listening without any model (for testing)
+    python -m laghu_voice.server --tts laghu --dialog agent      # the loan agent (Milestone 4): needs GROQ_API_KEY
+                                                                 # and the onboarding backend on ONBOARDING_URL
+    python -m laghu_voice.server --tts laghu --dialog agent --agent-spec agents/emi_reminder.yaml
+                                                                 # another use case: EMI reminder, mock tools
 """
 from __future__ import annotations
 
@@ -15,7 +19,7 @@ from pathlib import Path
 from websockets.asyncio.server import serve
 
 from .config import DEFAULT_LAGHU_DIR, Settings
-from .transport.ws_server import make_handler
+from .transport.ws_server import DialogDeps, make_handler
 
 VENDOR = DEFAULT_LAGHU_DIR.parent
 
@@ -55,14 +59,52 @@ def build_listen(settings: Settings):
     return ListenModels(vad, stt, turn)
 
 
+async def build_dialog(settings: Settings, tts):
+    """The agent's shared parts. Fails at startup, with the reason, if the spec, Groq or the backend is missing.
+    Returns (deps, tts): the TTS wrapped so the agent's fixed lines play from memory."""
+    if settings.dialog != "agent":
+        return None, tts
+    import httpx
+
+    from .dialog.backend import BackendClient
+    from .dialog.spec import load_spec
+    from .services.llm_openai import OpenAICompatLLM
+    from .services.tts_cache import CachedTTS
+
+    spec = load_spec(settings.agent_spec)
+    if not settings.llm_api_key:
+        raise SystemExit("--dialog agent needs GROQ_API_KEY (in the environment or .env)")
+    llm = OpenAICompatLLM(settings.llm_base_url, settings.llm_api_key, settings.llm_model, settings.llm_extra)
+    backend = None
+    if spec.http:
+        backend = BackendClient(settings.backend_url, settings.backend_api_key)
+        try:
+            (await backend.client.get(spec.backend.get("health", "/healthz"))).raise_for_status()
+        except (httpx.HTTPError, OSError) as e:
+            raise SystemExit(f"{spec.path.name}'s backend isn't reachable at {settings.backend_url} ({e!r}). "
+                             "Start it first (README: Milestone 4), or set ONBOARDING_URL.")
+    cached = CachedTTS(tts)
+    if settings.tts_prewarm:
+        lines = spec.fixed_lines()
+        logging.info("pre-rendering %d fixed lines of %s ...", len(lines), settings.agent_spec.name)
+        filler = spec.lines["filler"].text or spec.lines["filler"].example
+        took = await cached.prewarm(lines, first_clause=settings.first_clause, trim=[filler])
+        logging.info("pre-rendered %d segments in %.1f s", len(cached.cache), took)
+    logging.info("agent: %s, backend %s, LLM %s", settings.agent_spec.name,
+                 settings.backend_url if spec.http else "mock (answers in the spec)", settings.llm_model)
+    return DialogDeps(spec, backend, llm), cached
+
+
 async def main_async(settings: Settings) -> None:
     tts = build_tts(settings)
     listen = build_listen(settings)
-    async with serve(make_handler(tts, settings, listen=listen), settings.host, settings.port,
+    dialog, tts = await build_dialog(settings, tts)
+    async with serve(make_handler(tts, settings, listen=listen, dialog=dialog), settings.host, settings.port,
                      max_size=2**20) as server:
-        logging.info("listening on ws://%s:%d (TTS: %s, listening: %s%s, dialog: %s, traces in %s)",
+        logging.info("listening on ws://%s:%d (TTS: %s, listening: %s%s, %s, dialog: %s, traces in %s)",
                      settings.host, settings.port, settings.tts_backend, settings.listen,
                      "" if listen is None or listen.turn is not None else " without turn model",
+                     "half duplex" if settings.half_duplex else f"barge-in after {settings.barge_in_ms:.0f} ms",
                      settings.dialog, settings.trace_dir.resolve())
         await server.serve_forever()
 
@@ -79,10 +121,20 @@ def main() -> None:
     ap.add_argument("--listen", default=s.listen, choices=["full", "stub", "off"],
                     help="full: Silero VAD + Smart Turn + IndicConformer (scripts/get_listen_models.py)")
     ap.add_argument("--no-turn-model", action="store_true", help="end turns on silence alone (700 ms)")
-    ap.add_argument("--dialog", default=s.dialog, choices=["echo", "none"],
-                    help="echo: say back the transcript; none: only listen")
+    ap.add_argument("--dialog", default=s.dialog, choices=["agent", "echo", "none"],
+                    help="agent: the loan agent (agents/loan_onboarding.yaml); echo: say back the transcript; "
+                         "none: only listen")
+    ap.add_argument("--agent-spec", default=str(s.agent_spec), help="default: agents/loan_onboarding.yaml")
+    ap.add_argument("--backend-url", default=s.backend_url, help="the onboarding backend (default %(default)s)")
+    ap.add_argument("--no-prewarm", action="store_true", help="don't pre-render the agent's fixed lines")
+    ap.add_argument("--half-duplex", action="store_true",
+                    help="ignore the mic while the agent speaks (no barge-in; for a speaker instead of headphones)")
+    ap.add_argument("--barge-in-ms", type=float, default=s.barge_in_ms,
+                    help="speech over the agent for this long interrupts it (default 250)")
     a = ap.parse_args()
     s.listen, s.dialog = a.listen, a.dialog
+    s.agent_spec, s.backend_url, s.tts_prewarm = Path(a.agent_spec), a.backend_url, s.tts_prewarm and not a.no_prewarm
+    s.half_duplex, s.barge_in_ms = a.half_duplex or s.half_duplex, a.barge_in_ms
     s.turn_model = s.turn_model and not a.no_turn_model
     s.tts_backend, s.laghu_dir, s.laghu_voice = a.tts, Path(a.laghu_dir), a.voice
     s.host, s.port, s.first_clause = a.host, a.port, a.first_clause or s.first_clause

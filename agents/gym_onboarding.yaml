@@ -1,0 +1,253 @@
+# Gym membership onboarding: a second use case, to show the engine isn't tied to loans. Same engine, same
+# server, a different spec: different slots (a fitness goal, a plan, a batch time, a start day), different
+# tools, different intents. Its tools are mock answers written below, so it runs without any backend.
+# FitZone Gym is made up.
+#
+#   python -m laghu_voice.server --tts laghu --dialog agent --agent-spec agents/gym_onboarding.yaml
+#
+# Lines: a string is said exactly (fixed, or a template with {values}); {llm, example} is written by the LLM.
+
+agent:
+  name: लघु                       # Laghu
+  company: फ़िटज़ोन जिम              # FitZone Gym
+  company_en: FitZone Gym
+  gender: male
+  persona: >-
+    The agent, Laghu, is a male member of staff at FitZone Gym calling someone who showed interest on the
+    gym's website. He finds out their fitness goal, the plan and batch time they want and when they'd like
+    to start, tells them the fee, and books the membership or a free trial. Friendly, upbeat, brief, plain
+    Hindi.
+
+knowledge:                         # what the LLM may use to answer questions; numbers here may be said
+  plans: "3 plans: monthly (मासिक) 1500 rupees, quarterly (तिमाही, three months) 4000 rupees, yearly (सालाना) 12000 rupees"
+  hours: "open every day from 6 am to 10 pm"
+  batches: "morning 6 to 10 am, afternoon 12 to 4 pm, evening 5 to 9 pm"
+  trial: "one free trial day; trials longer than one day are not offered"
+  discounts: "fees are the same for everyone; no discount can be given on the phone"
+  includes: "all equipment, a trainer on the gym floor and a locker; personal training costs extra (front desk)"
+  changes: "the batch time and the start day can be changed later at the front desk; they only need to pick one now"
+
+timing:
+  filler_after_ms: 700             # first sentence of the reply not ready this long after the turn: the filler
+  reprompt_after_s: 6
+  hold_s: 20                       # after "एक सेकंड" (one second): wait this long before "are you there?"
+  hangup_after_reprompts: 3
+  max_unclear: 3
+  max_off_topic: 2
+
+slots:
+  full_name: {type: name, describe: "the caller's name"}
+  goal:
+    type: choice
+    describe: "the caller's fitness goal"
+    options:
+      weight_loss: [वज़न कम, वजन कम, वज़न घटाना, वजन घटाना, पतला, चर्बी, फैट, वेट लॉस]
+      muscle: [मसल, मसल्स, बॉडी बनानी, बॉडी बनाना, ताकत, स्ट्रेंथ, बॉडीबिल्डिंग]
+      # not फिटनेस ("fitness"): callers say "मेरा फिटनेस लक्ष्य…" ("my fitness goal is…") before any goal
+      fitness: [फिट, फ़िट, स्टैमिना, सेहत, हेल्थ, एक्टिव]
+    labels: {weight_loss: वज़न कम करना, muscle: मसल्स बनाना, fitness: फ़िट रहना}
+  plan:
+    type: choice
+    describe: "the membership plan: monthly, quarterly (three months) or yearly"
+    options:                       # first match wins: "तीन महीने" and "बारह महीने" before plain "महीने"
+      quarterly: [तीन महीने, तीन महीनों, क्वार्टरली, तिमाही]
+      yearly: [बारह महीने, एक साल, साल भर, सालाना, ईयरली, साल का, साल वाला]
+      monthly: [एक महीने, महीने, महीना, मंथली, मासिक]
+    labels: {monthly: मासिक, quarterly: तिमाही, yearly: सालाना}
+  time_slot:
+    type: choice
+    describe: "the batch time they prefer: morning, afternoon or evening"
+    options:
+      morning: [सुबह, मॉर्निंग]
+      afternoon: [दोपहर, आफ्टरनून]
+      evening: [शाम, ईवनिंग, रात]
+    labels: {morning: सुबह, afternoon: दोपहर, evening: शाम}
+    reask: {ambiguous: time_pick}  # "between morning and afternoon": ask for one batch, don't pick
+  start_days:
+    type: duration
+    unit: days
+    min: 0
+    max: 30
+    describe: "in how many days they want to start (0 = today)"
+    reask: {out_of_range: start_out_of_range, range: start_pick}   # "one or two weeks": ask for one day
+
+intents:
+  trial:
+    describe: "wants a free trial first (of any length), before joining"
+    phrases: [ट्रायल, ड्रायल, ट्राइल, फ्री ट्रायल, पहले देखना, पहले ट्राई, पहले एक दिन]
+  discount:
+    describe: "asks for a discount or a lower fee"
+    phrases: [डिस्काउंट, छूट, सस्ता, थोड़ा कम, कम कर दो, कम कर दीजिए, कम कीजिए, कम करो]
+
+lines:
+  # --- fixed
+  greeting: "मैं {agent}, {company} से बात कर रहा हूँ। आपने हमारी वेबसाइट पर मेंबरशिप के बारे में पूछा था। क्या अभी दो मिनट बात हो सकती है?"
+  # I'm Laghu, speaking from FitZone Gym. You asked about membership on our website. Can we talk for two minutes?
+  booked: "बढ़िया! आपकी मेंबरशिप बुक हो गई है। सारी जानकारी आपको एसएमएस पर मिल जाएगी। जिम में मिलते हैं!"
+  # Great! Your membership is booked. You'll get all the details by SMS. See you at the gym!
+  trial_booked: "हो गया! आपका एक दिन का मुफ़्त ट्रायल बुक हो गया है। जानकारी एसएमएस पर आ जाएगी। जिम में मिलते हैं!"
+  # Done! Your free one-day trial is booked. The details will come by SMS. See you at the gym!
+  transfer: "मैं आपको हमारे फ़्रंट डेस्क से जोड़ रहा हूँ। कृपया लाइन पर बने रहिए।"
+  # I'm connecting you to our front desk. Please stay on the line.
+  transfer_failed: "माफ़ कीजिए, अभी फ़्रंट डेस्क से जुड़ नहीं पा रहा हूँ। वे आपको जल्द कॉल करेंगे। धन्यवाद।"
+  # Sorry, I can't reach the front desk right now. They'll call you soon. Thank you.
+  tech_problem: "माफ़ कीजिए, अभी हमारे सिस्टम में कुछ दिक्कत है।"        # Sorry, there's a problem in our system right now.
+  hangup_silence: "मुझे आपकी आवाज़ नहीं आ रही है। मैं यह कॉल समाप्त कर रहा हूँ। धन्यवाद।"
+  # I can't hear you. I'm ending this call. Thank you.
+  not_heard_guard: "आगे बढ़ने से पहले, कृपया पूरी बात सुन लीजिए।"     # Before we go ahead, please hear it all.
+  repeat: "जी, मैं दोबारा बोलता हूँ।"                                # Sure, I'll say it again.
+  question_fallback: "इसकी पक्की जानकारी फ़्रंट डेस्क आपको दे देगा।"     # The front desk will give you exact details.
+  hold_ok: "जी, ज़रूर।"                                           # Sure. (said to "one second", then it waits)
+  filler: "जी, एक पल।"                                                 # Yes, one moment.
+
+  # --- templates
+  quote: "{plan:label} प्लान की फ़ीस {price:words} रुपये है।"            # The fee for the X plan is Y rupees.
+  ask_confirm: "तो आपकी मेंबरशिप {start_days:days} से, {time_slot:label} के बैच में शुरू होगी। क्या मैं इसे बुक कर दूँ?"
+  # So your membership starts {today / tomorrow / in N days}, in the {morning} batch. Shall I book it?
+
+  # --- written by the LLM
+  ask_name:
+    llm: "Thank them, then ask their name."
+    example: "धन्यवाद! पहले अपना नाम बताइए।"                                 # Thank you! First, tell me your name.
+  ask_goal:
+    llm: "Greet them by name if you have it, and ask what their main fitness goal is: losing weight, building muscle, or staying fit."
+    example: "आपका फ़िटनेस लक्ष्य क्या है? वज़न कम करना, मसल्स बनाना, या बस फ़िट रहना?"
+    # What's your fitness goal? Losing weight, building muscle, or just staying fit?
+  ask_plan:
+    llm: "React to their goal in a few encouraging words, then ask which plan they'd like: monthly, quarterly or yearly."
+    example: "बहुत बढ़िया। आप कौन सा प्लान लेना चाहेंगे, मासिक, तिमाही, या सालाना?"
+    # Very good. Which plan would you like: monthly, quarterly, or yearly?
+  ask_time:
+    llm: "Ask which batch time suits them: morning, afternoon or evening."
+    example: "आपके लिए कौन सा समय ठीक रहेगा, सुबह, दोपहर, या शाम?"          # Which time suits you: morning, afternoon or evening?
+  ask_start:
+    llm: "Ask when they'd like to start: today, tomorrow, or in a few days."
+    example: "आप कब से शुरू करना चाहेंगे? आज, कल, या कुछ दिन बाद?"          # When would you like to start? Today, tomorrow, or later?
+  time_pick:
+    llm: "Say the batches are morning, afternoon and evening, and ask them to pick one of these."
+    example: "हमारे बैच सुबह, दोपहर और शाम के हैं। आप इनमें से कौन सा लेंगे?"
+    # Our batches are morning, afternoon and evening. Which of these will you take?
+  start_pick:
+    llm: "Ask for one exact day to start: today, tomorrow, or after how many days."
+    example: "कृपया शुरू करने का एक तय दिन बताइए। आज, कल, या कितने दिन बाद?"
+    # Please tell me one exact day to start: today, tomorrow, or after how many days?
+  pick_one:
+    llm: "Say they mentioned more than one, and ask them to choose one."
+    example: "आपने एक से ज़्यादा बताया। कृपया कोई एक चुनिए।"           # You mentioned more than one. Please pick one.
+  no_discount:
+    llm: "Say the fees are the same for everyone and can't be reduced, then ask if they'd like to go ahead and book at this fee."
+    example: "फ़ीस सबके लिए एक जैसी है, इसमें कमी नहीं हो सकती। क्या मैं इसी फ़ीस पर बुक कर दूँ?"
+    # The fee is the same for everyone; it can't be reduced. Shall I book at this fee?
+  trial_confirm:
+    llm: "Say you offer one free trial day (longer trials aren't offered), and ask if they'd like you to book it."
+    example: "हम एक दिन का मुफ़्त ट्रायल देते हैं। क्या मैं वह बुक कर दूँ?"
+    # We offer a free one-day trial. Shall I book it?
+  start_out_of_range:
+    llm: "Say they can start any time in the next thirty days, and ask when they'd like to start."
+    example: "आप अगले तीस दिनों में कभी भी शुरू कर सकते हैं। आप कब से शुरू करना चाहेंगे?"
+    # You can start any time in the next thirty days. When would you like to start?
+  offer_trial:
+    llm: "Say no problem, and offer a free one-day trial instead. Ask if they'd like that."
+    example: "कोई बात नहीं। क्या आप पहले एक दिन का मुफ़्त ट्रायल लेना चाहेंगे?"
+    # No problem. Would you like a free one-day trial first?
+  not_now:
+    llm: "Say no problem, they can call the gym whenever they like, and thank them."
+    example: "कोई बात नहीं। आप जब चाहें हमें कॉल कर सकते हैं। धन्यवाद।"       # No problem. Call us whenever you like. Thank you.
+  goodbye:
+    llm: "Thank them for their time and say they're welcome at the gym any time."
+    example: "आपके समय के लिए धन्यवाद। आप जब चाहें जिम आ सकते हैं।"         # Thanks for your time. Come to the gym any time.
+  low_confidence:
+    llm: "Apologise that you're having trouble understanding them."
+    example: "माफ़ कीजिए, मुझे आपकी बात ठीक से समझ नहीं आ रही है।"          # Sorry, I'm having trouble understanding you.
+  out_of_scope:
+    llm: "Say the front desk can help them better with this."
+    example: "इसमें हमारा फ़्रंट डेस्क आपकी बेहतर मदद कर पाएगा।"            # Our front desk can help you better with this.
+  not_heard:
+    llm: "Say you couldn't hear them."
+    example: "माफ़ कीजिए, मैं आपकी बात सुन नहीं पाया।"                      # Sorry, I couldn't hear you.
+  unclear:
+    llm: "If the caller asked or said something you can reply to from FACTS (a question without a question word, like whether there are other plans), reply to it in one sentence; otherwise say briefly that you didn't quite understand."
+    example: "माफ़ कीजिए, मैं ठीक से समझ नहीं पाया।"                       # Sorry, I didn't quite understand.
+  was_asking:
+    llm: "Say that you were asking something (the question follows)."
+    example: "जी, मैं पूछ रहा था।"                                       # Yes, I was asking:
+  are_you_there:
+    llm: "Ask if they are still on the line."
+    example: "क्या आप लाइन पर हैं?"                                      # Are you on the line?
+  scope:
+    llm: "Say that on this call you can help with joining the gym."
+    example: "मैं इस कॉल पर जिम की मेंबरशिप में आपकी मदद कर सकता हूँ।"       # On this call I can help with gym membership.
+
+backend: {provider: mock}
+
+tools:
+  quote_plan:
+    mock:
+      - {if: {plan: monthly}, outcome: ok, data: {price: 1500}}
+      - {if: {plan: quarterly}, outcome: ok, data: {price: 4000}}
+      - {if: {plan: yearly}, outcome: ok, data: {price: 12000}}
+    save: {price: data.price}
+    events:
+      - {if: {outcome: ok}, then: quoted}
+      - {then: error}
+  book_membership:
+    mock: [{outcome: ok, data: {booking_ref: FZ1024}}]
+    save: {booking_ref: {from: data.booking_ref, private: true}}
+    events:
+      - {if: {outcome: ok}, then: booked}
+      - {then: error}
+  book_trial:
+    mock: [{outcome: ok}]
+    events:
+      - {if: {outcome: ok}, then: booked}
+      - {then: error}
+  handover:
+    mock: [{outcome: ok}]
+    events:
+      - {if: {outcome: ok}, then: ok}
+      - {then: failed}
+
+states:
+  greet: {say: greeting, expect: yes_no, also: [full_name], on: {yes: ask_name, no: not_now}}   # "हाँ, मैं अभय"
+  not_now: {say: not_now, end: not_now}
+  ask_name: {say: ask_name, expect: full_name, skip_if: full_name, on: {answer: ask_goal}}
+  ask_goal: {say: ask_goal, expect: goal, skip_if: goal, on: {answer: ask_plan}}
+  ask_plan: {say: ask_plan, expect: plan, also: [time_slot], skip_if: plan, on: {answer: ask_time}}
+  ask_time: {say: ask_time, expect: time_slot, skip_if: time_slot, on: {answer: ask_start}}
+  ask_start: {say: ask_start, expect: start_days, skip_if: start_days, on: {answer: quote_plan}}
+  quote_plan: {tool: quote_plan, on: {quoted: quote, error: tech_problem}}
+  quote: {say: quote, next: ask_confirm}
+  ask_confirm:
+    say: ask_confirm
+    expect: yes_no
+    require_heard: 0.85              # the fee and the question again if the caller cut in before 85% of them
+    on: {yes: book_membership, no: offer_trial, trial: confirm_trial, discount: no_discount}
+  no_discount:                       # asked again ("मैं स्पेशल कस्टमर हूँ"): the same answer, worded differently
+    say: no_discount
+    expect: yes_no
+    on: {yes: book_membership, no: offer_trial, trial: confirm_trial, discount: no_discount}
+  confirm_trial:                     # any mention of a trial lands here first: one day only, then ask
+    say: trial_confirm
+    expect: yes_no
+    on: {yes: book_trial, no: back}  # no: back to the question asked before
+  book_membership: {tool: book_membership, on: {booked: booked, error: tech_problem}}
+  booked: {say: booked, end: booked}
+  offer_trial: {say: offer_trial, expect: yes_no, on: {yes: book_trial, no: goodbye}}
+  book_trial: {tool: book_trial, on: {booked: trial_booked, error: tech_problem}}
+  trial_booked: {say: trial_booked, end: trial_booked}
+  goodbye: {say: goodbye, end: declined}
+  handover: {tool: handover, on: {ok: transfer, failed: transfer_failed}}
+  low_confidence: {say: low_confidence, next: handover}
+  out_of_scope: {say: out_of_scope, next: handover}
+  tech_problem: {say: tech_problem, next: handover}
+  transfer: {say: transfer, end: transferred}
+  transfer_failed: {say: transfer_failed, end: transfer_failed}
+  hangup_silence: {say: hangup_silence, end: no_response}
+
+global:
+  human: handover
+  stop: goodbye
+  trial: confirm_trial               # a trial asked for at any point: say what's offered, then ask
+  off_topic_limit: out_of_scope
+  low_confidence: low_confidence
+  silence: hangup_silence

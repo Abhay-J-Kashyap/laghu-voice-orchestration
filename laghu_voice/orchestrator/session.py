@@ -50,6 +50,26 @@ class TurnState:
     finished: bool = False
 
 
+def heard_estimate(segs: list[SegmentState]) -> dict:
+    """What the caller heard before interrupting, from the client's playback reports (sent every 100 ms, so
+    up to 100 ms stale). A segment still being synthesised has an unknown length; its text is prorated over
+    the audio sent so far, so the estimate errs towards "heard more". Words are cut at a character position
+    in proportion to the audio played; this is an estimate, not an alignment."""
+    parts, played_s = [], 0.0
+    for s in segs:
+        if s.samples_played <= 0:
+            break
+        total = max(s.samples_sent, 1)
+        frac = min(1.0, s.samples_played / total)
+        played_s += s.samples_played / SAMPLE_RATE_OUT
+        if frac >= 0.999 and s.done:
+            parts.append(s.text)
+        else:
+            parts.append(s.text[:round(len(s.text) * frac)] + "…")
+            break
+    return {"text_estimate": " ".join(parts), "played_s": round(played_s, 2)}
+
+
 class Session:
     def __init__(self, tts: TTSService, send_audio: Callable[[AudioOut], Awaitable[None]],
                  send_event: Callable[[dict], Awaitable[None]], settings: Settings | None = None,
@@ -228,6 +248,8 @@ class Session:
         ts.trace.set(outcome=outcome, segments=[
             {"segment_id": s.segment_id, "text": s.text, "model_text": s.model_text,
              "samples_sent": s.samples_sent, "samples_played": s.samples_played} for s in segs])
+        if outcome == "interrupted":
+            ts.trace.set(heard=heard_estimate(segs))
         rec = self.trace.write(ts.trace)
         asyncio.get_running_loop().create_task(self._safe_event({"type": "turn_trace", "trace": rec}))
 

@@ -23,6 +23,7 @@ def _env(name: str, default: str) -> str:
 
 # Where scripts/get_laghu.py puts Laghu's code and weights
 DEFAULT_LAGHU_DIR = Path(__file__).resolve().parents[1] / "vendor" / "laghu"
+DEFAULT_AGENT_SPEC = Path(__file__).resolve().parents[1] / "agents" / "loan_onboarding.yaml"
 
 
 @dataclass
@@ -55,8 +56,19 @@ class Settings:
     turn_model: bool = field(default_factory=lambda: _env("LV_TURN_MODEL", "1") == "1")
     stt_threads: int = field(default_factory=lambda: int(_env("STT_THREADS", "4")))
     stt_pad_s: float = field(default_factory=lambda: float(_env("STT_PAD_S", "0.25")))  # silence around segments
-    # What happens after the caller's turn: echo (say back the transcript) or none (Milestone 2)
+    # Barge-in (Milestone 3): speech over the agent for this long interrupts it. half_duplex=1 instead ignores
+    # the mic while the agent speaks (use it with a speaker instead of headphones)
+    barge_in_ms: float = field(default_factory=lambda: float(_env("LV_BARGE_IN_MS", "250")))
+    half_duplex: bool = field(default_factory=lambda: _env("LV_HALF_DUPLEX", "0") == "1")
+    # What happens after the caller's turn: agent (Milestone 4: the agent spec below), echo (say back the
+    # transcript) or none (only listen)
     dialog: str = field(default_factory=lambda: _env("LV_DIALOG", "echo"))
+    agent_spec: Path = field(default_factory=lambda: Path(_env("LV_AGENT_SPEC", str(DEFAULT_AGENT_SPEC))))
+    # The onboarding backend the agent's tools call (the Voice Onboarding Agent service)
+    backend_url: str = field(default_factory=lambda: _env("ONBOARDING_URL", "http://127.0.0.1:8000"))
+    backend_api_key: str = field(default_factory=lambda: _env("ONBOARDING_API_KEY", "local-dev-key"))
+    # Synthesise the agent's fixed lines at startup, so they play from memory
+    tts_prewarm: bool = field(default_factory=lambda: _env("LV_TTS_PREWARM", "1") == "1")
 
     # Observability
     trace_dir: Path = field(default_factory=lambda: Path(_env("LV_TRACE_DIR", "traces")))

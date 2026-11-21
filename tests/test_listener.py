@@ -166,3 +166,28 @@ async def test_speech_right_after_a_turn_end_keeps_its_first_syllable():
     assert sum(1 for r in rms if 0.001 < r < 0.01) >= 3   # the soft start belongs to the second turn
     assert sum(1 for r in rms if r > 0.1) >= 16
     await lis.close()
+
+
+async def test_the_dialog_hint_ends_a_one_word_answer_before_the_cap():
+    """Gym test call 2: "शाम" and "परसों" waited 1.5 s because Smart Turn doubted them. The dialog can read
+    them, so the turn ends at the first check after 500 ms of silence."""
+    lis, turns, _, _ = make(ScriptedTurn([0.1]))
+    seen = []
+
+    def hint(text):
+        seen.append(text)
+        return text == "w1"
+    lis.turn_hint = hint
+    await run(lis, speech(500), silence(2000))
+    assert len(turns) == 1 and turns[0].end_reason == "dialog_hint" and seen == ["w1"]
+    checks = turns[0].trace.fields["turn_checks"]
+    assert checks[-1].get("hint") and checks[-1]["silence_ms"] >= 500 and checks[0]["silence_ms"] < 500
+    await lis.close()
+
+
+async def test_a_hint_that_says_no_leaves_the_cap():
+    lis, turns, _, _ = make(ScriptedTurn([0.1]))
+    lis.turn_hint = lambda text: False
+    await run(lis, speech(500), silence(2000))
+    assert len(turns) == 1 and turns[0].end_reason == "silence_cap"
+    await lis.close()
