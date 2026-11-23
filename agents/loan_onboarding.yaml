@@ -337,7 +337,7 @@ tools:
 
 states:
   greet: {say: greeting, expect: yes_no, on: {yes: ask_name, no: not_now}}
-  not_now: {say: not_now, end: caller_declined}
+  not_now: {say: not_now, end: caller_declined, outcome: declined}
 
   ask_name: {say: ask_name, expect: full_name, on: {answer: ask_dob}}
   ask_name_again: {say: ask_name_again, expect: full_name, on: {answer: ask_dob}}
@@ -385,14 +385,14 @@ states:
     on: {yes: consent_yes, no: consent_no, dispute: escalate_dispute}
   consent_yes: {tool: record_consent, with: {granted: true}, on: {recorded: consent_yes_done, error: tech_problem}}
   consent_no: {tool: record_consent, with: {granted: false}, on: {recorded: consent_no_done, error: tech_problem}}
-  consent_yes_done: {say: consent_yes_done, end: completed}
-  consent_no_done: {say: consent_no_done, end: consent_declined}
+  consent_yes_done: {say: consent_yes_done, end: completed, outcome: success}
+  consent_no_done: {say: consent_no_done, end: consent_declined, outcome: declined}
   declined:
     say: declined
     expect: yes_no
     on: {yes: escalate_dispute, dispute: escalate_dispute, human: escalate_dispute, no: goodbye}
   referred: {say: referred, expect: yes_no, on: {yes: escalate_referred, human: escalate_referred, no: goodbye}}
-  goodbye: {say: goodbye, end: caller_declined}
+  goodbye: {say: goodbye, end: caller_declined, outcome: declined}
 
   offer_lead: {say: offer_lead, expect: yes_no, on: {yes: ask_email, no: goodbye}}
   ask_email: {say: ask_email, expect: email, on: {answer: confirm_email}}
@@ -403,8 +403,8 @@ states:
     require_heard: true
     on: {yes: capture_lead, no: ask_email}
   capture_lead: {tool: capture_lead, on: {emailed: lead_emailed, callback: lead_callback, error: tech_problem}}
-  lead_emailed: {say: lead_emailed, end: lead_captured}
-  lead_callback: {say: lead_callback, end: lead_captured}
+  lead_emailed: {say: lead_emailed, end: lead_captured, outcome: success}
+  lead_callback: {say: lead_callback, end: lead_captured, outcome: success}
 
   # Hand-overs. The reason codes are the backend's.
   escalate_requested: {tool: escalate, with: {reason: customer_requested_human}, on: {ok: transfer, failed: transfer_failed}}
@@ -417,9 +417,9 @@ states:
   low_confidence: {say: low_confidence, next: escalate_low_confidence}
   out_of_scope: {say: out_of_scope, next: escalate_out_of_scope}
   tech_problem: {say: tech_problem, next: escalate_technical}
-  transfer: {say: transfer, end: transferred}
-  transfer_failed: {say: transfer_failed, end: transfer_failed}
-  hangup_silence: {say: hangup_silence, end: no_response}
+  transfer: {say: transfer, end: transferred, outcome: transferred}
+  transfer_failed: {say: transfer_failed, end: transfer_failed, outcome: failed}
+  hangup_silence: {say: hangup_silence, end: no_response, outcome: no_contact}
 
 global:                            # where these go from any waiting state, unless the state's own `on` says
   human: escalate_requested

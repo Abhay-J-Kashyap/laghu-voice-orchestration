@@ -1,0 +1,18 @@
+{
+ "ok": false,
+ "errors": [
+  "line pick_one: unknown value {options}",
+  "state select_doctor: select_doctor needs targets for exactly ['doctor_selected', 'doctor_unavailable', 'error']",
+  "state fix: target goodbye_polite does not exist",
+  "global emergency: target 'emergency_handle' does not exist",
+  "state doctor_unavailable: its line asks a question but the state doesn't wait for the answer (it has next); make it expect yes_no or a slot, with on",
+  "line confirm_readback: says {patient_name}, but no state asks for patient_name and no tool sets it, so it can be empty (add a question for it, with skip_if: patient_name)"
+ ],
+ "warnings": [],
+ "check_rounds": 0,
+ "stopped": "DailyLimit: HTTP 429: {\"error\":{\"message\":\"Rate limit reached for model `openai/gpt-oss-120b` in organization `org_01m23mgkvfe918kwnmb4gqcdvf` service tier `on_demand` on tokens per day (TPD): Limit 200000, Used 197376, Requested 5751. Please try again in 22m30.864s. Need more tokens? Upgrade to Dev Tier today ",
+ "minutes": 5.3,
+ "requests": 6,
+ "test_calls": 0,
+ "passed": 0
+}

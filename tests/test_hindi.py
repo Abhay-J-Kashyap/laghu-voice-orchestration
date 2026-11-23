@@ -157,6 +157,8 @@ def test_mask_hides_pan_passcode_date_but_keeps_amounts():
     assert h.mask_for_llm("हाँ मेरा पैन ए बी सी डी ई एक दो तीन चार एफ है", strict=False) == "हां मेरा पैन […] है"
     assert h.mask_for_llm("कोड है बारह चौंतीस", strict=False) == "कोड है […]"
     assert h.mask_for_llm("बारह अप्रैल उन्नीस सौ अठासी", strict=False) == "[…]"
+    assert h.mask_for_llm("बुधवार पच्चीस नवंबर सुबह", strict=False, dates=False) == "बुधवार पच्चीस नवंबर सुबह"
+    assert h.mask_for_llm("फोन नौ आठ सात छह पाँच चार", strict=False, dates=False) == "फोन […]"
     assert h.mask_for_llm("तीन लाख तीन साल के लिए", strict=False) == "तीन लाख तीन साल के लिए"
     # strict: every number and letter name goes, even the postposition के (it is also the letter K)
     assert h.mask_for_llm("तीन साल के लिए", strict=True) == "[…] साल […] लिए"

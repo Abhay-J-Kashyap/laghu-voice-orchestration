@@ -1,0 +1,384 @@
+{
+ "raw": {
+  "agent": {
+   "name": "लघु",
+   "company": "नॉर्थब्रिज स्कूल ऑफ मैनेजमेंट",
+   "company_en": "Northbridge School of Management",
+   "gender": "male",
+   "persona": "English: The agent calls back leads who filled the enquiry form, confirms their interest, gathers program choice, intake, work experience and city, and books a free 30‑minute counselling session. The tone is polite, helpful and concise, using respectful आप and first‑person masculine forms."
+  },
+  "knowledge": {
+   "Full‑time MBA fee": "8.5 lakh rupees",
+   "Executive MBA fee": "6 lakh rupees",
+   "Online MBA fee": "3.2 lakh rupees",
+   "Full‑time MBA duration": "2 years",
+   "Executive MBA duration": "18 months",
+   "Online MBA duration": "2 years",
+   "July intake": "July",
+   "January intake (Online MBA only)": "January",
+   "July intake deadline": "30 April",
+   "Counsellor working hours": "10 am to 7 pm, Monday to Saturday",
+   "Maximum callback attempts": "5",
+   "Callback window": "1 day between attempts",
+   "Maximum booking horizon": "14 days from today"
+  },
+  "slots": {
+   "name": {
+    "type": "name",
+    "describe": "Caller’s name"
+   },
+   "program": {
+    "type": "choice",
+    "options": {
+     "full_time": [
+      "पूरा‑टाइम एमबीए",
+      "फुल टाइम एमबीए",
+      "पूर्णकालिक एमबीए"
+     ],
+     "executive": [
+      "एक्जीक्यूटिव एमबीए",
+      "एक्जीक्यूटिव एमबीए",
+      "कार्यकारी एमबीए"
+     ],
+     "online": [
+      "ऑनलाइन एमबीए",
+      "ऑनलाइन एमबीए",
+      "डिजिटल एमबीए"
+     ]
+    },
+    "labels": {
+     "full_time": "पूरा टाइम एमबीए",
+     "executive": "एक्जीक्यूटिव एमबीए",
+     "online": "ऑनलाइन एमबीए"
+    },
+    "reask": {
+     "ambiguous": "pick_one"
+    }
+   },
+   "intake": {
+    "type": "choice",
+    "options": {
+     "july": [
+      "जुलाई",
+      "जुलाई intake",
+      "जुलाई में"
+     ],
+     "january": [
+      "जनवरी",
+      "जनवरी intake",
+      "जनवरी में"
+     ]
+    },
+    "labels": {
+     "july": "जुलाई",
+     "january": "जनवरी"
+    },
+    "reask": {
+     "ambiguous": "pick_one"
+    }
+   },
+   "experience": {
+    "type": "number",
+    "min": 0,
+    "max": 50,
+    "describe": "Years of work experience"
+   },
+   "city": {
+    "type": "text",
+    "describe": "Caller’s city"
+   },
+   "appointment": {
+    "type": "time",
+    "min": 0,
+    "max": 14,
+    "describe": "Preferred day and part of day for counselling session"
+   },
+   "callback_time": {
+    "type": "time",
+    "min": 0,
+    "max": 14,
+    "describe": "Preferred day and part of day for a callback"
+   }
+  },
+  "intents": {
+   "scholarship": {
+    "describe": "Caller asks about scholarships or fee waivers",
+    "phrases": [
+     "छात्रवृत्ति",
+     "स्कॉलरशिप",
+     "फीस में छूट",
+     "वित्तीय सहायता"
+    ]
+   },
+   "discount": {
+    "describe": "Caller asks for a discount on fees",
+    "phrases": [
+     "डिस्काउंट",
+     "छूट",
+     "कम कीमत"
+    ]
+   },
+   "admission_guarantee": {
+    "describe": "Caller asks for guaranteed admission",
+    "phrases": [
+     "पक्का एडमिशन",
+     "गैरंटी",
+     "सुनिश्चित प्रवेश"
+    ]
+   }
+  },
+  "lines": {
+   "greeting": "मैं लघु, नॉर्थब्रिज स्कूल ऑफ मैनेजमेंट से बात कर रहा हूँ। क्या अभी बात कर सकते हैं?",
+   "ask_program": "आप किस एमबीए प्रोग्राम में रुचि रखते हैं? {program:words}",
+   "pick_one": "कृपया एक विकल्प चुनें।",
+   "ask_intake": "आप किस इंटेक में दाखिला लेना चाहते हैं? {intake:words}",
+   "ask_experience": "आपके पास कार्य अनुभव के कितने वर्ष हैं?",
+   "ask_city": "आप किस शहर से हैं?",
+   "offer_counselling": "हम एक मुफ्त तीस मिनट का काउंसलिंग सत्र वीडियो या फ़ोन पर पेश कर रहे हैं। क्या आप इसे बुक करना चाहेंगे?",
+   "choose_appointment": "काउंसलिंग सत्र के लिए आपका पसंदीदा दिन और समय बताइए।",
+   "offer_callback": "यदि आप अभी नहीं कर सकते तो हम आपको वापस कॉल कर सकते हैं। क्या आप कॉल बैक चाहते हैं?",
+   "ask_callback_time": "कॉल बैक के लिए आपका पसंदीदा दिन और समय बताइए।",
+   "readback_booking": "आपके लिए {program:label} का {intake:label} intake में, {appointment:time} पर एक मुफ्त तीस मिनट का काउंसलिंग सत्र बुक किया गया है। क्या यह सही है?",
+   "fix_prompt": "कृपया बताइए कि कौन सी जानकारी बदलनी है?"
+  },
+  "backend": {
+   "provider": "mock"
+  },
+  "tools": {
+   "book_session": {
+    "mock": [
+     {
+      "if": {
+       "program": "full_time"
+      },
+      "outcome": "ok",
+      "data": {
+       "session_id": "FT123"
+      }
+     },
+     {
+      "if": {
+       "program": "executive"
+      },
+      "outcome": "ok",
+      "data": {
+       "session_id": "EX456"
+      }
+     },
+     {
+      "if": {
+       "program": "online"
+      },
+      "outcome": "ok",
+      "data": {
+       "session_id": "ON789"
+      }
+     },
+     {
+      "outcome": "ok"
+     }
+    ],
+    "save": {
+     "session_id": "data.session_id"
+    },
+    "events": [
+     {
+      "if": {
+       "outcome": "ok"
+      },
+      "then": "booked"
+     },
+     {
+      "then": "error"
+     }
+    ],
+    "commits": true
+   }
+  },
+  "states": {
+   "greet": {
+    "expect": "yes_no",
+    "say": "greeting",
+    "also": [
+     "name"
+    ],
+    "on": {
+     "yes": "ask_program",
+     "no": "goodbye_decline"
+    }
+   },
+   "goodbye_decline": {
+    "say": "goodbye",
+    "end": "declined",
+    "outcome": "declined"
+   },
+   "ask_program": {
+    "expect": "program",
+    "say": "ask_program",
+    "on": {
+     "answer": "program_chosen"
+    },
+    "skip_if": "program"
+   },
+   "program_chosen": {
+    "next": "ask_intake"
+   },
+   "ask_intake": {
+    "expect": "intake",
+    "say": "ask_intake",
+    "on": {
+     "answer": "intake_chosen"
+    },
+    "skip_if": "intake",
+    "corrections": [
+     "intake"
+    ]
+   },
+   "intake_chosen": {
+    "next": "ask_experience"
+   },
+   "ask_experience": {
+    "expect": "experience",
+    "say": "ask_experience",
+    "on": {
+     "answer": "experience_given"
+    },
+    "skip_if": "experience"
+   },
+   "experience_given": {
+    "next": "ask_city"
+   },
+   "ask_city": {
+    "expect": "city",
+    "say": "ask_city",
+    "on": {
+     "answer": "city_given"
+    },
+    "skip_if": "city"
+   },
+   "city_given": {
+    "next": "offer_counselling"
+   },
+   "offer_counselling": {
+    "expect": "yes_no",
+    "say": "offer_counselling",
+    "on": {
+     "yes": "choose_appointment",
+     "no": "offer_callback"
+    }
+   },
+   "choose_appointment": {
+    "expect": "appointment",
+    "say": "choose_appointment",
+    "on": {
+     "answer": "appointment_set"
+    },
+    "skip_if": "appointment"
+   },
+   "appointment_set": {
+    "next": "confirm_booking"
+   },
+   "offer_callback": {
+    "expect": "yes_no",
+    "say": "offer_callback",
+    "on": {
+     "yes": "ask_callback_time",
+     "no": "goodbye_no_booking"
+    }
+   },
+   "ask_callback_time": {
+    "expect": "callback_time",
+    "say": "ask_callback_time",
+    "on": {
+     "answer": "callback_time_set"
+    },
+    "skip_if": "callback_time"
+   },
+   "callback_time_set": {
+    "next": "goodbye_callback_scheduled"
+   },
+   "confirm_booking": {
+    "expect": "yes_no",
+    "say": "readback_booking",
+    "corrections": [
+     "program",
+     "intake",
+     "appointment"
+    ],
+    "on": {
+     "yes": "book_session",
+     "no": "fix_booking",
+     "corrected": "confirm_booking"
+    }
+   },
+   "fix_booking": {
+    "say": "fix_prompt",
+    "expect": "yes_no",
+    "corrections": [
+     "program",
+     "intake",
+     "appointment"
+    ],
+    "on": {
+     "yes": "confirm_booking",
+     "no": "goodbye_no_booking",
+     "corrected": "confirm_booking"
+    }
+   },
+   "book_session": {
+    "tool": "book_session",
+    "on": {
+     "booked": "booking_success",
+     "error": "tech_problem"
+    }
+   },
+   "booking_success": {
+    "say": "booking_done",
+    "end": "booked",
+    "outcome": "success"
+   },
+   "goodbye_no_booking": {
+    "say": "goodbye",
+    "end": "declined",
+    "outcome": "declined"
+   },
+   "goodbye_callback_scheduled": {
+    "say": "callback_scheduled",
+    "end": "declined",
+    "outcome": "declined"
+   },
+   "scholarship_help": {
+    "say": "scholarship_line",
+    "next": "back"
+   },
+   "discount_help": {
+    "say": "discount_line",
+    "next": "back"
+   },
+   "admission_guarantee_help": {
+    "say": "admission_line",
+    "next": "back"
+   }
+  },
+  "global": {
+   "scholarship": "scholarship_help",
+   "discount": "discount_help",
+   "admission_guarantee": "admission_guarantee_help",
+   "human": "handover"
+  }
+ },
+ "en": {
+  "greeting": "I am Laghu from Northbridge School of Management. May I speak with you now?",
+  "ask_program": "Which MBA program are you interested in? {program:words}",
+  "pick_one": "Please pick one option.",
+  "ask_intake": "Which intake would you like to join? {intake:words}",
+  "ask_experience": "How many years of work experience do you have?",
+  "ask_city": "Which city are you from?",
+  "offer_counselling": "We are offering a free 30‑minute counselling session via video or phone. Would you like to book it?",
+  "choose_appointment": "Please tell me your preferred day and time for the counselling session.",
+  "offer_callback": "If you cannot now, we can call you back. Would you like a callback?",
+  "ask_callback_time": "Please tell me your preferred day and time for the callback.",
+  "readback_booking": "Your {program} for the {intake} intake is booked for a free 30‑minute counselling session on {appointment}. Is this correct?",
+  "fix_prompt": "Please tell me which detail you would like to change."
+ }
+}

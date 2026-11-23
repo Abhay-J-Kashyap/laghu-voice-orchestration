@@ -8,3 +8,5 @@ m0/out/
 vendor/
 m2/out/
 m4/out/
+web/node_modules/
+m5/out/setup/*/events.jsonl

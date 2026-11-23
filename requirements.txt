@@ -15,6 +15,9 @@ scipy
 sounddevice
 # Dialog (Milestone 4): agent specs
 pyyaml
+# Setup web UI (Milestone 5): python -m laghu_voice.web
+fastapi
+uvicorn
 # Tests
 pytest
 pytest-asyncio

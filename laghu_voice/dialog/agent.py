@@ -22,13 +22,13 @@ import re
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 
 from ..text.segmenter import Segmenter
 from . import hindi
 from .guard import asks_question, check_answer, check_spoken
 from .llm import DialogLLM, Extraction, LLMCall
-from .slots import fmt, secrets_of
+from .slots import fmt, read_time, secrets_of, time_words
 from .spec import Spec, State
 from .tools import ToolRunner
 
@@ -80,6 +80,8 @@ class Agent:
         self.llm = llm
         self.call_id = call_id
         self.today = today or date.today()
+        if llm is not None:
+            llm.today = self.today                # the LLM counts days to "शनिवार" or "पाँच दिसंबर" from here
         self.tools = ToolRunner(spec, backend, call_id)
         self.context = {**spec.context, **(context or {})}
         self.vars: dict = {}                 # saved tool values and the backend session
@@ -96,10 +98,19 @@ class Agent:
         self.spoken: list[str] = []
         self.problems: list[str] = []
         self.unclear = self.off_topic = self.reprompts = 0
+        self.stuck = 0                         # turns in a row that changed nothing (no state, no value)
+        # a date can be private only where the spec collects a date of birth; elsewhere a day is a booking's
+        self._private_dates = any(s.type == "date" for s in spec.slots.values())
+        self.volunteered: set[str] = set()     # slots the caller gave before being asked: their questions are skipped
+        self.volunteered_now: set[str] = set()  # ... given in this turn
+        self.skipped: list[str] = []           # slots whose question was skipped because they were already given
+        self.time_seen: set = set()            # every value a time slot held: each was read back
+        self._hint: str | None = None          # the rules' reading of a turn the LLM also reads (for its details)
         self.last_caller_text = ""
         self._last_said: tuple[str, str] = ("", "")
         self._arrival: list[Part] = []
         self._prev_waiting: str | None = None
+        self._detour_from: str | None = None   # the question the caller was on when an intent took a detour
         self._last_keys: set[str] = set()              # the lines of the previous reply
         self._core_said: dict[str, tuple[str, str]] = {}    # state -> its question as last said, without wrappers
         self._full_prompt = False
@@ -142,12 +153,25 @@ class Agent:
         self._full_prompt = bool(st.require_heard) and not self._heard_enough
         if not prompt_heard and self._heard_enough and st.require_heard:
             self._step["heard_fraction"] = round(heard_fraction, 2)
-        masked = hindi.mask_for_llm(text, strict=self._strict(st))
+        masked = hindi.mask_for_llm(text, strict=self._strict(st), dates=self._private_dates)
         self.history.append(f"Caller: {masked}")
         out: list[Part] = []
+        before = (self.state, dict(self.slots))
+        self._hint = None
+        self.volunteered_now = set()
         event, line, ex = await self._understand(st, text, prompt_heard, masked)
         self._step["event"] = event
         await self._dispatch(st, event, line, text, prompt_heard, out)
+        if not self.ended and event not in _OWN_COUNT and (self.state, self.slots) == before:
+            # nothing moved, and no unclear count caught it (an intent that leads back to this question): never
+            # loop. MBA test call P6 heard "would you like a callback?" 30 times.
+            self.stuck += 1
+            if self.stuck >= self.max_unclear:
+                self._step["stuck"] = True
+                out.clear()
+                await self._run(self.spec.global_["low_confidence"], out)
+        else:
+            self.stuck = 0
         r = self._reply(out, t0, caller=masked)
         if ex is not None and ex.reply:
             # the extraction call wrote words for the intent IT chose; use them only if the engine acted on that
@@ -193,9 +217,55 @@ class Agent:
         toks = hindi.tokens(text)
         for it in self.spec.intents.values():
             if it.phrases and (it.name in st.on or it.name in self.spec.global_) and \
-                    hindi._has(toks, hindi._phrases("|".join(it.phrases))):
+                    not self._global_to_here(st, it.name) and hindi._has(toks, hindi._phrases("|".join(it.phrases))):
                 return it.name
         return None
+
+    def _answered(self, st: State) -> bool:
+        """Skip this question: its skip_if is known, or the caller already gave its answer unasked."""
+        if "answer" not in st.on:
+            return False
+        if st.skip_if and self.slots.get(st.skip_if) is not None:
+            return True
+        return st.expect in self.volunteered and self.slots.get(st.expect) is not None
+
+    def _global_to_here(self, st: State, event: str) -> bool:
+        """A global request that leads to the question already being asked ("कॉल बैक" at "would you like a
+        callback?"): not a detour. A state's own route back to itself (the gym's discount asked again) is meant."""
+        return event not in st.on and self.spec.global_.get(event) == st.name
+
+    def _open(self, st: State) -> list:
+        """Slots the caller may give before being asked: not yet known, not private, not this question's."""
+        return [s for s in self.spec.slots.values()
+                if not s.private and s.name not in self.slots and s.name != st.expect and s.name not in st.also]
+
+    def _implicit_yes(self, st: State) -> bool:
+        """May details instead of a yes count as yes here? At "can we talk?" or "shall I book a session?", yes; at a
+        read-back before a booking (corrections, or a yes that reaches a commit), only a real yes."""
+        return st.expect == "yes_no" and not st.corrections and not st.require_heard
+
+    def _volunteer_rules(self, st: State, text: str) -> None:
+        """Choice slots named in passing ("फुल टाइम एमबीए जुलाई में चाहिए": the intake too). Only choices: their phrases
+        are specific, while a bare number or day could belong to anything."""
+        for s in self._open(st):
+            if s.type == "choice":
+                p = s.parse(text, self.today)
+                if p.value is not None:
+                    self._set(s.name, p.value)
+                    self.volunteered.add(s.name)
+                    self.volunteered_now.add(s.name)
+
+    def _volunteer_llm(self, st: State, ex: Extraction) -> None:
+        for s in self._open(st):
+            q = s.from_llm(ex.fields)
+            if q.value is not None:
+                self._set(s.name, q.value, q.extra or None)
+                self.volunteered.add(s.name)
+                self.volunteered_now.add(s.name)
+
+    def _needs_llm_for_details(self, st: State, text: str) -> bool:
+        """A long turn while slots the rules can't read are still open: the LLM reads the details too."""
+        return len(hindi.tokens(text)) > 4 and any(s.type != "choice" for s in self._open(st))
 
     async def _understand(self, st: State, text: str, heard: bool, masked: str):
         """(event, line, extraction): event is a key of the state's `on`, a global request, or one of
@@ -223,6 +293,12 @@ class Agent:
         self._step["path"] = "llm"
         ex = await self._extract(st, masked, heard)
         event, line = self._from_llm(st, ex)
+        if self._hint and event in ("unclear", "reask", "answer"):
+            # the rules read a yes or an answer and sent the turn on only for its details: if the LLM can't place
+            # the whole turn, the rules' reading stands ("हां बात कर सकता हूँ आप बताइए क्या चाहिए" is a yes)
+            if event != self._hint:
+                self._step["llm_overruled"] = event
+            event, line = self._hint, None
         if event == "unclear" and _asks(text):
             # the LLM couldn't place it, but the caller asked something: answer from the facts, then ask again
             # (better than "I didn't understand" for "कोई और प्लान है तुम्हारे पास?")
@@ -232,6 +308,8 @@ class Agent:
 
     def _set(self, name: str, value, extra: dict | None = None) -> None:
         self.slots[name] = value
+        if self.spec.slots[name].type == "time" and value:
+            self.time_seen.add(value)
         if extra:
             self.extras[name] = extra
         if self.spec.slots[name].private:
@@ -251,10 +329,20 @@ class Agent:
             yn = hindi.yes_no(text)
             if yn:
                 self._also(st, text)
-                if len(hindi.tokens(text)) > 2 and any(n not in self.slots for n in st.also):
-                    # "हाँ हाँ, मेरा नाम अभय है": more than a yes, and the rules can't read the rest (a name); the
-                    # LLM reads both. Its call also writes the reply, so it costs about nothing.
+                if yn == "yes":
+                    self._volunteer_rules(st, text)
+                if (len(hindi.tokens(text)) > 2 and any(n not in self.slots for n in st.also)) or \
+                        (yn == "yes" and self._needs_llm_for_details(st, text)):
+                    # "हाँ हाँ, मेरा नाम अभय है", "हाँ बुक कर दो, बुधवार सुबह": more than a yes, and the rules can't
+                    # read the rest; the LLM reads both. Its call also writes the reply, so it costs about nothing.
+                    self._hint = yn
                     return None
+            if yn is None and self._implicit_yes(st) and hindi.leading_yes(text):
+                # "जी हाँ मैं मनीष कुमार हूँ बोलिए": starts with a yes and takes nothing back. The LLM reads the rest;
+                # if it can't place it, the yes stands. Never at a read-back before a commit.
+                self._volunteer_rules(st, text)
+                self._hint = "yes"
+                return None
             return (yn, None) if yn else None
         slot = self.spec.slots.get(st.expect)
         if slot is None:
@@ -263,14 +351,16 @@ class Agent:
         if p.value is not None:
             self._set(slot.name, p.value, p.extra or None)
             self._also(st, text)
-            return "answer", None
+            self._volunteer_rules(st, text)         # "फुल टाइम एमबीए जुलाई में": the intake too (an answer the rules
+            return "answer", None                   # read stays theirs: no LLM call for the other details)
         if p.problem:
             return "reask", self._reask_line(slot, p.problem)
         return None
 
     def _reask_line(self, slot, problem: str) -> str:
         self._step["problem"] = problem
-        default = "pick_one" if problem in ("range", "ambiguous") else "unclear"
+        default = "pick_one" if problem in ("range", "ambiguous") else \
+            "out_of_range" if problem == "out_of_range" and "out_of_range" in self.spec.lines else "unclear"
         return slot.reask.get(problem, default)
 
     def _also(self, st: State, text: str) -> None:
@@ -281,7 +371,8 @@ class Agent:
 
     async def _extract(self, st: State, masked: str, heard: bool) -> Extraction:
         slot = self.spec.slots.get(st.expect)
-        slots = [s for s in [slot] + [self.spec.slots[n] for n in st.also] if s is not None]
+        slots = [s for s in [slot] + [self.spec.slots[n] for n in st.also] if s is not None] + self._open(st)
+        slots += [self.spec.slots[n] for n in st.corrections if self.spec.slots[n] not in slots]   # "no, Friday"
         intents = [i for i in self.spec.intents.values() if i.name in st.on or i.name in self.spec.global_]
         expect = "a yes or no" if st.expect == "yes_no" else (slot.describe or slot.name)
         if slot is not None and slot.private:
@@ -297,13 +388,37 @@ class Agent:
 
     def _from_llm(self, st: State, ex: Extraction):
         i, e = ex.intent, st.expect
+        if i in self.spec.intents and self._global_to_here(st, i):
+            # "सोमवार सुबह कॉल बैक कर दो" at "would you like a callback?": what this question offers, so a yes where
+            # details may stand for one; elsewhere (a read-back before a booking) it decides nothing
+            i = "yes" if self._implicit_yes(st) else "unclear"
+        if i in ("answer", "yes", "no") or i in self.spec.intents:
+            self._volunteer_llm(st, ex)
+        if st.corrections and i in ("answer", "no", "unclear"):
+            # a correction the rules couldn't read ("नहीं गलत है, शुक्रवार सत्ताईस नवंबर"): read back again with it.
+            # Not after a yes: the LLM once returned a day for "हाँ सही है ठीक है धन्यवाद" and moved a booking. And only
+            # if the turn says something of the kind (a day, a number, an option). Private slots stay with the rules.
+            changed = False
+            for name in st.corrections:
+                sl = self.spec.slots[name]
+                q = sl.from_llm(ex.fields) if not sl.private else None
+                if q is not None and q.value is not None and q.value != self.slots.get(name) \
+                        and _mentions(sl, self.last_caller_text, self.today):
+                    self._set(name, q.value, q.extra or None)
+                    changed = True
+            if changed:
+                return "corrected", None
         if i == "answer":
             slot = self.spec.slots.get(e)
             if slot is None:
+                if self._implicit_yes(st) and self.volunteered_now:
+                    return "yes", None                # details instead of a yes, at "can we talk?" or an offer
                 return "unclear", None
             if slot.private:                           # said, but the rules couldn't read it
                 return "reask", self._reask_line(slot, "partial")
             p = slot.from_llm(ex.fields)
+            if p.value is None and self._hint == "answer" and slot.name in self.slots:
+                p = type(p)(self.slots[slot.name])         # the rules read it this turn
             if p.value is not None:
                 self._set(slot.name, p.value, p.extra or None)
                 self._also_llm(st, ex)
@@ -368,7 +483,7 @@ class Agent:
             if name is None or name == "back":
                 return out or None
             st = self.spec.states[name]
-            if st.skip_if and self.slots.get(st.skip_if) is not None:
+            if self._answered(st):
                 name = st.on.get("answer")           # skipped, as _run would
                 continue
             if st.tool or st.end:
@@ -407,13 +522,18 @@ class Agent:
                 out.extend(self._prompts(full=True))
                 return
             self.unclear = 0
+            if event in self.spec.intents:
+                self._detour_from = self.state
+            elif st.on[event] != "back":
+                self._detour_from = None                  # the flow moved on: no detour to come back from
             await self._run(st.on[event], out)
             return
         if event in self.spec.global_ and event not in ("off_topic_limit", "low_confidence", "silence"):
+            self._detour_from = self.state
             await self._run(self.spec.global_[event], out)
             return
-        if event == "corrected":
-            await self._run(self.state, out)
+        if event == "corrected":                          # a value changed: its `on: corrected`, or ask again
+            await self._run(st.on.get("corrected", self.state), out)
             return
         if event == "reask":
             if self._step.get("problem") not in NOT_UNCLEAR:
@@ -468,9 +588,12 @@ class Agent:
         start = len(out)
         for _ in range(30):
             if name == "back":                       # return to the question asked before a detour
-                name = self._prev_waiting or self.spec.start
+                name = self._detour_from or self._prev_waiting or self.spec.start
+                self._detour_from = None
             st = self.spec.states[name]
-            if st.skip_if and self.slots.get(st.skip_if) is not None:
+            if self._answered(st):
+                if st.expect not in self.skipped:
+                    self.skipped.append(st.expect)
                 name = st.on["answer"]
                 continue
             if st.tool:
@@ -500,6 +623,13 @@ class Agent:
         self.tool_log.append(o.result)
         for name, v in o.saved.items():
             opt = tool.save[name] if isinstance(tool.save[name], dict) else {}
+            if name in self.spec.slots:
+                # a value the business's system works out (the clinic's doctor from the problem and the age): set the
+                # slot itself, so the read-back and the commit see it like an answer
+                sl = self.spec.slots[name]
+                if sl.type != "choice" or v in sl.options:
+                    self._set(name, v)
+                continue
             self.vars[name] = v
             if opt.get("private"):
                 self.private_saved[name] = opt["private"]
@@ -519,7 +649,19 @@ class Agent:
     def _vars(self) -> dict:
         return {"agent": self.spec.agent["name"], "company": self.spec.agent["company"], "call_id": self.call_id,
                 "state": self.state or "", "last_caller_text": (self.last_caller_text or "-")[:500],
-                **self.context, **self.vars, **{k: self.slots[k] for k in self.slots}}
+                **self.context, **self.vars, **{k: self.slots[k] for k in self.slots}, **self._time_parts()}
+
+    def _time_parts(self) -> dict:
+        """A time slot's day as a tool can test it: <name>_weekday (mon ... sun), <name>_part, <name>_days."""
+        out = {}
+        for name, sl in self.spec.slots.items():
+            v = self.slots.get(name)
+            if sl.type == "time" and v:
+                d, _, part = str(v).partition(":")
+                when = self.today + timedelta(days=int(d))
+                out.update({f"{name}_weekday": WEEKDAY_KEYS[when.weekday()], f"{name}_part": part,
+                            f"{name}_days": int(d)})
+        return out
 
     def _private(self, name: str) -> bool:
         s = self.spec.slots.get(name)
@@ -538,6 +680,8 @@ class Agent:
                 sl = self.spec.slots.get(name)
                 return sl.labels.get(str(vars.get(name)), "") if sl else ""
             v = vars.get(name)
+            if how == "time" and v not in (None, ""):
+                return time_words(v, self.today)         # the day itself: "शनिवार, पाँच दिसंबर सुबह"
             return fmt(v, how) if how else ("" if v is None else str(v))
         return _VAR.sub(one, text)
 
@@ -723,8 +867,38 @@ class Agent:
         for p in block:
             allowed |= hindi.number_values(p.example) | hindi.number_values(p.goal or "")
         for v in self.spec.knowledge.values():
-            allowed |= hindi.number_values(str(v))
+            allowed |= hindi.fact_numbers(str(v))
+        allowed |= time_numbers(self.spec, self.slots, self.today, self.time_seen)
         return allowed
+
+
+WEEKDAY_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+_OWN_COUNT = {"unclear", "reask", "question", "repeat", "hold", "not_heard", "off_topic", "corrected"}
+
+
+def time_numbers(spec, slots: dict, today: date, seen: set | None = None) -> set[float]:
+    """The day of the month in a time slot's read-back ("शनिवार, पाँच दिसंबर" says 5), for every value the slot held
+    in the call (a day corrected later was read back too)."""
+    out = set()
+    values = {v for name, v in slots.items() if spec.slots.get(name) and spec.slots[name].type == "time" and v}
+    for v in values | set(seen or ()):
+        out.add(float((today + timedelta(days=int(str(v).partition(":")[0]))).day))
+    return out
+
+
+def _mentions(slot, text: str, today: date) -> bool:
+    """Does the caller's turn say something of the slot's kind? (A check on a correction the LLM reads.)"""
+    if slot.type == "time":
+        days, named = hindi.day_ahead(text, today)
+        return named or read_time(text, today) is not None
+    if slot.type in ("number", "money", "duration"):
+        return bool(hindi.quantities(text)) or bool(set(hindi.tokens(text)) & _NONE_WORDS)
+    if slot.type == "choice":
+        return bool(slot.option_spans(text)) or any(hindi.norm(lab) in hindi.norm(text) for lab in slot.labels.values())
+    return True                                    # a name or a city: the LLM's reading is all there is
+
+
+_NONE_WORDS = {hindi.norm(w) for w in ["कोई", "शून्य", "ज़ीरो", "जीरो"]}
 
 
 _GOES_ON = {hindi.norm(w) for w in ["या", "और", "लेकिन", "पर", "तो", "कि", "मतलब", "अः", "अ", "उम", "उम्म",

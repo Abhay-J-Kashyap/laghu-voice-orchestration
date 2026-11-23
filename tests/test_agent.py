@@ -128,7 +128,7 @@ async def test_leak_check_refuses_to_send(spec, monkeypatch):
     await turns(agent, IDENTITY + [hindi.digits_words(OTP)] + LOAN[:3])
     assert agent.state == "ask_employment"
     n = len(llm.sent)
-    monkeypatch.setattr(hindi, "mask_for_llm", lambda text, strict: text)    # break the first lock
+    monkeypatch.setattr(hindi, "mask_for_llm", lambda text, strict, **kw: text)    # break the first lock
     r = await turn(agent, "वही जो मेरे पैन ए बी सी डी ई एक दो तीन चार एफ़ पर लिखा है")
     assert agent.llm.blocked and r.step["llm"][0]["blocked"] and r.step["event"] == "unclear"
     assert all("ए बी सी डी ई" not in json.dumps(m, ensure_ascii=False) for m in llm.sent[n:])

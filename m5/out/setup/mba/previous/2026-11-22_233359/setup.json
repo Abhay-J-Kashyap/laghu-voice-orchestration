@@ -1,0 +1,11 @@
+{
+ "ok": false,
+ "errors": [],
+ "warnings": [],
+ "check_rounds": 0,
+ "stopped": "ReadTimeout: ",
+ "minutes": 9.5,
+ "requests": 4,
+ "test_calls": 0,
+ "passed": 0
+}

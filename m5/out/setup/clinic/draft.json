@@ -1,0 +1,338 @@
+{
+ "raw": {
+  "agent": {
+   "name": "लघु",
+   "company": "संजिवनी फ़ैमिली क्लिनिक",
+   "company_en": "Sanjeevani Family Clinic",
+   "gender": "male",
+   "persona": "English: The agent is a courteous clinic receptionist who calls the caller by name, gathers their details (patient name, age, problem or preferred doctor, and desired appointment day and time), confirms the appointment and books it. The tone is polite, helpful and concise, using respectful ‘आप’ and first‑person masculine forms."
+  },
+  "knowledge": {
+   "Dr. Mehra schedule": "General physician, works every day except Sunday, 9 am to 1 pm and 5 pm to 8 pm.",
+   "Dr. Khan schedule": "Child specialist, works Monday, Wednesday and Friday, 10 am to 2 pm.",
+   "Dr. Iyer schedule": "Skin specialist, works Tuesday and Saturday, 4 pm to 8 pm.",
+   "Consultation fee Dr. Mehra": "500 rupees",
+   "Consultation fee Dr. Khan": "700 rupees",
+   "Consultation fee Dr. Iyer": "700 rupees",
+   "Follow‑up rule": "Follow‑up within 7 days is free.",
+   "Payment methods": "Cash, UPI and cards are accepted.",
+   "Home visits": "No home visits are offered.",
+   "Emergency instruction": "Tell the caller to go to the nearest hospital immediately and do not book an appointment.",
+   "Reschedule/cancel policy": "Rescheduling or cancellation must be done by calling the reception during clinic hours; not handled in this call."
+  },
+  "slots": {
+   "patient_name": {
+    "type": "text",
+    "describe": "English: The name of the patient (may be different from caller)."
+   },
+   "age": {
+    "type": "number",
+    "min": 0,
+    "max": 120,
+    "describe": "English: Patient's age in years."
+   },
+   "problem": {
+    "type": "choice",
+    "options": {
+     "child": [
+      "बच्चे का रोग",
+      "बच्चे की समस्या",
+      "बाल रोग",
+      "बाल समस्या"
+     ],
+     "skin": [
+      "त्वचा की समस्या",
+      "त्वचा रोग",
+      "बालों की समस्या",
+      "नाखून की समस्या"
+     ],
+     "general": [
+      "सामान्य समस्या",
+      "सिर दर्द",
+      "बुखार",
+      "सर्दी",
+      "खांसी"
+     ]
+    },
+    "labels": {
+     "child": "बच्चे का रोग",
+     "skin": "त्वचा की समस्या",
+     "general": "सामान्य समस्या"
+    },
+    "reask": {
+     "ambiguous": "pick_one"
+    },
+    "describe": "English: Broad category of the health problem to help select a doctor."
+   },
+   "doctor": {
+    "type": "choice",
+    "options": {
+     "mehra": [
+      "डॉ. मेहरा",
+      "मेहरा डॉक्टर",
+      "डॉ मेहरा"
+     ],
+     "khan": [
+      "डॉ. खान",
+      "खान डॉक्टर",
+      "डॉ खान"
+     ],
+     "iyer": [
+      "डॉ. आयर",
+      "आयर डॉक्टर",
+      "डॉ आयर"
+     ]
+    },
+    "labels": {
+     "mehra": "डॉ. मेहरा",
+     "khan": "डॉ. खान",
+     "iyer": "डॉ. आयर"
+    },
+    "reask": {
+     "ambiguous": "pick_one"
+    },
+    "describe": "English: The doctor the patient will see."
+   },
+   "appointment_time": {
+    "type": "time",
+    "min": 0,
+    "max": 7,
+    "describe": "English: Desired appointment day (within next 7 days) and part of day (morning or evening)."
+   }
+  },
+  "intents": {
+   "emergency": {
+    "describe": "English: Caller reports a medical emergency that requires immediate hospital visit.",
+    "phrases": [
+     "छाती में दर्द",
+     "सांस लेने में तकलीफ़",
+     "भारी रक्तस्राव",
+     "आपातकाल",
+     "इमरजेंसी",
+     "तुरंत अस्पताल"
+    ]
+   }
+  },
+  "lines": {
+   "greeting": "मैं {agent}, {company} से बात कर रहा हूँ। क्या आप अभी बात कर सकते हैं?",
+   "goodbye_polite": "धन्यवाद, आपका दिन शुभ हो। अलविदा।",
+   "ask_problem": {
+    "llm": "Ask the caller to describe the health problem category they need an appointment for.",
+    "example": "कृपया बताइए कि आप किस प्रकार की समस्या के लिए अपॉइंटमेंट चाहते हैं? आप बच्चे का रोग, त्वचा की समस्या या सामान्य समस्या में से चुन सकते हैं।"
+   },
+   "ask_age": "कृपया रोगी की आयु बताइए।",
+   "doctor_unavailable": "माफ़ कीजिए, चयनित डॉक्टर इस समय उपलब्ध नहीं हैं। क्या आप कोई अन्य समय या डॉक्टर चुनना चाहेंगे?",
+   "ask_time": {
+    "llm": "Ask the caller for a desired appointment day within the next 7 days and whether they prefer morning or evening.",
+    "example": "कृपया बताइए कि आप अगले सात दिनों में किस दिन और सुबह या शाम में अपॉइंटमेंट चाहते हैं।"
+   },
+   "confirm_readback": "मैं पुष्टि करता हूँ कि {patient_name:hi}, उम्र {age:words} वर्ष, डॉक्टर {doctor:label} के साथ, अपॉइंटमेंट {appointment_time:time} पर निर्धारित है। क्या यह सही है?",
+   "fix_prompt": {
+    "llm": "Ask if the caller wants to change any of the collected details.",
+    "example": "क्या आप इन विवरणों में से कोई बदलना चाहेंगे?"
+   },
+   "booked": "आपकी अपॉइंटमेंट बुक हो गई है। धन्यवाद।",
+   "tech_problem": "क्षमा कीजिए, तकनीकी समस्या के कारण मैं आपकी सहायता नहीं कर पा रहा हूँ। कृपया बाद में फिर से कॉल करें।",
+   "emergency_line": "कृपया तुरंत निकटतम अस्पताल जाएँ।",
+   "pick_one": "कृपया इन विकल्पों में से एक चुनें: {options}।"
+  },
+  "backend": {
+   "provider": "mock"
+  },
+  "tools": {
+   "select_doctor": {
+    "mock": [
+     {
+      "if": {
+       "problem": "child",
+       "age": {
+        "lt": 14
+       }
+      },
+      "outcome": "ok",
+      "data": {
+       "doctor": "khan"
+      }
+     },
+     {
+      "if": {
+       "problem": "skin"
+      },
+      "outcome": "ok",
+      "data": {
+       "doctor": "iyer"
+      }
+     },
+     {
+      "if": {
+       "problem": "general"
+      },
+      "outcome": "ok",
+      "data": {
+       "doctor": "mehra"
+      }
+     },
+     {
+      "outcome": "unavailable"
+     }
+    ],
+    "save": {
+     "doctor": "data.doctor"
+    },
+    "events": [
+     {
+      "if": {
+       "outcome": "ok"
+      },
+      "then": "doctor_selected"
+     },
+     {
+      "if": {
+       "outcome": "unavailable"
+      },
+      "then": "doctor_unavailable"
+     },
+     {
+      "then": "error"
+     }
+    ],
+    "commits": false
+   },
+   "book_appointment": {
+    "mock": [
+     {
+      "outcome": "ok"
+     }
+    ],
+    "save": {
+     "appointment_time": "data.time"
+    },
+    "events": [
+     {
+      "if": {
+       "outcome": "ok"
+      },
+      "then": "booked"
+     },
+     {
+      "then": "error"
+     }
+    ],
+    "commits": true
+   }
+  },
+  "states": {
+   "greet": {
+    "expect": "yes_no",
+    "also": [
+     "patient_name"
+    ],
+    "say": "greeting",
+    "on": {
+     "yes": "ask_problem",
+     "no": "decline_greeting"
+    }
+   },
+   "decline_greeting": {
+    "say": "goodbye_polite",
+    "end": "declined",
+    "outcome": "declined"
+   },
+   "ask_problem": {
+    "expect": "problem",
+    "say": "ask_problem",
+    "on": {
+     "answer": "ask_age"
+    }
+   },
+   "ask_age": {
+    "expect": "age",
+    "say": "ask_age",
+    "on": {
+     "answer": "select_doctor"
+    }
+   },
+   "select_doctor": {
+    "tool": "select_doctor",
+    "on": {
+     "doctor_selected": "ask_time",
+     "doctor_unavailable": "doctor_unavailable"
+    }
+   },
+   "doctor_unavailable": {
+    "say": "doctor_unavailable",
+    "next": "ask_time"
+   },
+   "ask_time": {
+    "expect": "appointment_time",
+    "say": "ask_time",
+    "on": {
+     "answer": "confirm"
+    }
+   },
+   "confirm": {
+    "say": "confirm_readback",
+    "expect": "yes_no",
+    "corrections": [
+     "patient_name",
+     "age",
+     "doctor",
+     "appointment_time"
+    ],
+    "on": {
+     "yes": "book_appointment",
+     "no": "fix"
+    }
+   },
+   "fix": {
+    "say": "fix_prompt",
+    "expect": "yes_no",
+    "corrections": [
+     "patient_name",
+     "age",
+     "doctor",
+     "appointment_time"
+    ],
+    "on": {
+     "yes": "confirm",
+     "no": "goodbye_polite",
+     "corrected": "confirm"
+    }
+   },
+   "book_appointment": {
+    "tool": "book_appointment",
+    "on": {
+     "booked": "booked",
+     "error": "tech_problem"
+    }
+   },
+   "booked": {
+    "say": "booked",
+    "end": "booked",
+    "outcome": "success"
+   },
+   "tech_problem": {
+    "say": "tech_problem",
+    "next": "handover"
+   }
+  },
+  "global": {
+   "emergency": "emergency_handle",
+   "human": "handover"
+  }
+ },
+ "en": {
+  "greeting": "I am {agent} from {company}. May I speak with you now?",
+  "goodbye_polite": "Thank you, have a nice day. Goodbye.",
+  "ask_problem": "Please tell me what kind of problem you need an appointment for. You can choose child’s illness, skin problem, or general problem.",
+  "ask_age": "Please tell the patient’s age.",
+  "doctor_unavailable": "Sorry, the selected doctor is not available at that time. Would you like to choose another time or doctor?",
+  "ask_time": "Please tell me which day within the next seven days and whether morning or evening you would like the appointment.",
+  "confirm_readback": "I confirm that {patient_name}, age {age} years, with Dr. {doctor}, appointment on {appointment_time}. Is this correct?",
+  "fix_prompt": "Would you like to change any of these details?",
+  "booked": "Your appointment has been booked. Thank you.",
+  "tech_problem": "Sorry, due to a technical problem I cannot assist you. Please call again later.",
+  "emergency_line": "Please go to the nearest hospital immediately.",
+  "pick_one": "Please choose one of the following options: {options}."
+ }
+}

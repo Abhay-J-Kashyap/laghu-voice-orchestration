@@ -1,0 +1,22 @@
+{
+ "greeting": "I am {agent} from {company}. May I speak with you now?",
+ "goodbye_decline": "Understood, thank you. Goodbye.",
+ "ask_program": "Which MBA program are you interested in? Full‑time MBA, Executive MBA, or Online MBA?",
+ "ask_intake": "Which intake do you prefer? July or January?",
+ "ask_work_exp": "How many years of work experience do you have?",
+ "ask_city": "Which city do you reside in?",
+ "offer_session": "We can book a free 30‑minute counselling session via video or phone. Would you like to book it now?",
+ "callback_offer": "If you are busy now, we can schedule a callback. Would you like a callback?",
+ "ask_session_time": "Please tell me your preferred day and time for the counselling session within the next 14 days.",
+ "ask_callback_time": "Please tell me your preferred day and time for the callback within the next 14 days.",
+ "readback_details": "You have selected the {program:label} program, {intake} intake, {work_exp:words} years of work experience, city {city}, and {session_time:time} for the session. It's a free 30‑minute counselling session. Is this correct?",
+ "fix_prompt": "Please tell me which detail you would like to change, or say no if you do not wish to book now.",
+ "booking_confirmed": "Your free 30‑minute counselling session has been booked for {session_time:time} for the {program:label} program. Thank you.",
+ "readback_callback": "Your callback has been scheduled for {callback_time:time}. Is this correct?",
+ "callback_confirmed": "Your callback has been scheduled for {callback_time:time}. Thank you.",
+ "goodbye_no_booking": "No problem, call us later if you wish to book. Goodbye.",
+ "scholarship_line": "I cannot provide scholarship or fee waiver details, but an admissions counsellor will discuss this.",
+ "admission_line": "I cannot guarantee admission; it is decided by the admissions committee.",
+ "human_line": "I will connect you to an admissions counsellor, and you may also book the free counselling session.",
+ "pick_one": "Please choose one of these."
+}

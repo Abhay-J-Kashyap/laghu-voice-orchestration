@@ -1,0 +1,34 @@
+[
+ {
+  "q": "Where are appointments recorded, and how is the booking confirmed to the patient?",
+  "a": "we have a register at reception, the agent just tells them the day and time on the call. no sms or whatsapp"
+ },
+ {
+  "q": "How many patients can each doctor see in a morning or evening slot, and what happens if a slot is full?",
+  "a": "dont worry about that, reception manages the queue. if they come in their slot they will be seen"
+ },
+ {
+  "q": "How should the agent pick the doctor when the caller only describes a problem?",
+  "a": "child under 14 goes to dr khan, skin hair or nail problems dr iyer, everything else dr mehra"
+ },
+ {
+  "q": "What should the agent do in an emergency (chest pain, breathing trouble, heavy bleeding)?",
+  "a": "tell them to go to the nearest hospital immediately, dont book anything"
+ },
+ {
+  "q": "Can patients reschedule or cancel on this call?",
+  "a": "no, for that they should call the reception during clinic hours"
+ },
+ {
+  "q": "What details must be collected besides name, age, doctor and time?",
+  "a": "nothing else. we already have the number they are calling from"
+ },
+ {
+  "q": "Can someone book for another person, like a parent for a child?",
+  "a": "yes thats common, just take the patients name and age not the callers"
+ },
+ {
+  "q": "When should the agent hand over to a person?",
+  "a": "if they ask for someone at the clinic or ask about reports, test results or medicines. then pass to reception"
+ }
+]

@@ -1,0 +1,18 @@
+{
+ "greeting": "I am {agent} from {company}. May we talk now?",
+ "goodbye_decline": "Understood, thank you. Goodbye.",
+ "ask_problem": "Ask the caller to briefly describe their health problem.",
+ "ask_doctor": "Which doctor would you like to see? Dr. Mehra, Dr. Khan, or Dr. Iyer?",
+ "pick_one": "Please choose one option.",
+ "ask_age": "Please tell the patient's age.",
+ "ask_time": "Which day and morning/evening would you like to come? (within next 7 days)",
+ "read_back": "I have understood that {name} is {age} years old, with Dr. {doctor} at {appointment_time}. Is this correct?",
+ "fix_prompt": "Ask which detail the caller wants to change or if they prefer not to book now.",
+ "booked": "Your appointment with Dr. {doctor} at {appointment_time} is booked. Thank you.",
+ "emergency_line": "This is an emergency, please go to the nearest hospital immediately.",
+ "human_line": "Connecting you to clinic staff. Please hold.",
+ "report_line": "For reports or medication information, I will connect you to reception.",
+ "cancel_not_allowed": "Cancellation or rescheduling cannot be done over this call; please contact reception.",
+ "goodbye": "Thank you, goodbye.",
+ "decide_doctor": "Select the appropriate doctor based on problem and age, set {doctor}."
+}

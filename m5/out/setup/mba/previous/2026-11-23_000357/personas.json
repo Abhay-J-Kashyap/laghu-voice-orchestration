@@ -1,0 +1,199 @@
+[
+ {
+  "id": "P1",
+  "kind": "cooperative",
+  "expected": "success",
+  "behaviour": "Answer each question plainly with your facts, one answer per turn.",
+  "name": "Arjun Sharma",
+  "facts": {
+   "name": "Arjun Sharma",
+   "program": "full_time",
+   "intake": "july",
+   "experience": 2,
+   "city": "Pune",
+   "appointment": {
+    "days": 3,
+    "part": "morning"
+   },
+   "callback_time": {
+    "days": 0,
+    "part": "afternoon"
+   }
+  },
+  "first_said": {},
+  "questions": []
+ },
+ {
+  "id": "P2",
+  "kind": "over-answerer",
+  "expected": "success",
+  "behaviour": "Give two or more of your facts in one turn whenever you can, even before you're asked for them.",
+  "name": "Priya Verma",
+  "facts": {
+   "name": "Priya Verma",
+   "program": "executive",
+   "intake": "july",
+   "experience": 5,
+   "city": "Mumbai",
+   "appointment": {
+    "days": 5,
+    "part": "evening"
+   },
+   "callback_time": {
+    "days": 0,
+    "part": "morning"
+   }
+  },
+  "first_said": {},
+  "questions": []
+ },
+ {
+  "id": "P3",
+  "kind": "undecided",
+  "expected": "success",
+  "behaviour": "The first time you're asked to choose between options, name two of them and say you can't decide. When asked to pick one, pick the one in your facts. Otherwise answer normally.",
+  "name": "Rohan Patel",
+  "facts": {
+   "name": "Rohan Patel",
+   "program": "online",
+   "intake": "january",
+   "experience": 0,
+   "city": "Nagpur",
+   "appointment": {
+    "days": 2,
+    "part": "afternoon"
+   },
+   "callback_time": {
+    "days": 0,
+    "part": "evening"
+   }
+  },
+  "first_said": {},
+  "questions": []
+ },
+ {
+  "id": "P4",
+  "kind": "self-corrector",
+  "expected": "success",
+  "behaviour": "For the slot in FIRST_SAID, first give that wrong value. A turn or two later, or when the agent reads your details back, say it was wrong and give the right value from your facts.",
+  "name": "Sneha Iyer",
+  "facts": {
+   "name": "Sneha Iyer",
+   "program": "full_time",
+   "intake": "july",
+   "experience": 4,
+   "city": "Ahmedabad",
+   "appointment": {
+    "days": 1,
+    "part": "morning"
+   },
+   "callback_time": {
+    "days": 0,
+    "part": "night"
+   }
+  },
+  "first_said": {
+   "experience": 10
+  },
+  "questions": []
+ },
+ {
+  "id": "P5",
+  "kind": "questioner",
+  "expected": "success",
+  "behaviour": "Ask your two QUESTIONS, one at a time, at moments that fit (before answering, or after). Then carry on answering with your facts.",
+  "name": "Vikram Singh",
+  "facts": {
+   "name": "Vikram Singh",
+   "program": "executive",
+   "intake": "july",
+   "experience": 7,
+   "city": "Bengaluru",
+   "appointment": {
+    "days": 4,
+    "part": "evening"
+   },
+   "callback_time": {
+    "days": 0,
+    "part": "afternoon"
+   }
+  },
+  "first_said": {},
+  "questions": [
+   "What is the fee for the Executive MBA?",
+   "Do you guarantee a scholarship?"
+  ]
+ },
+ {
+  "id": "P6",
+  "kind": "interrupter",
+  "expected": "success",
+  "behaviour": "You're in a hurry and often cut the agent off. Answer as soon as you understand what's being asked.",
+  "name": "Ananya Rao",
+  "facts": {
+   "name": "Ananya Rao",
+   "program": "online",
+   "intake": "july",
+   "experience": 1,
+   "city": "Chennai",
+   "appointment": {
+    "days": 6,
+    "part": "morning"
+   },
+   "callback_time": {
+    "days": 0,
+    "part": "night"
+   }
+  },
+  "first_said": {},
+  "questions": []
+ },
+ {
+  "id": "P7",
+  "kind": "refuser",
+  "expected": "declined",
+  "behaviour": "Answer the questions, but at the main decision (when asked to book, confirm, join or agree) say no. Decline any other offer too, politely.",
+  "name": "Manish Kumar",
+  "facts": {
+   "name": "Manish Kumar",
+   "program": "full_time",
+   "intake": "july",
+   "experience": 3,
+   "city": "Hyderabad",
+   "appointment": {
+    "days": 7,
+    "part": "afternoon"
+   },
+   "callback_time": {
+    "days": 0,
+    "part": "morning"
+   }
+  },
+  "first_said": {},
+  "questions": []
+ },
+ {
+  "id": "P8",
+  "kind": "human-seeker",
+  "expected": "transferred",
+  "behaviour": "Answer the first two questions, then ask to talk to a real person. Insist if needed.",
+  "name": "Lakshmi Nair",
+  "facts": {
+   "name": "Lakshmi Nair",
+   "program": "online",
+   "intake": "july",
+   "experience": 0,
+   "city": "Kolkata",
+   "appointment": {
+    "days": 0,
+    "part": "evening"
+   },
+   "callback_time": {
+    "days": 0,
+    "part": "morning"
+   }
+  },
+  "first_said": {},
+  "questions": []
+ }
+]

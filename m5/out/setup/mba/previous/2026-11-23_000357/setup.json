@@ -1,0 +1,14 @@
+{
+ "ok": false,
+ "errors": [],
+ "warnings": [
+  "line ask_program: asks for program without naming its options",
+  "line ask_intake: asks for intake without naming its options"
+ ],
+ "check_rounds": 2,
+ "stopped": "DailyLimit: HTTP 429: {\"error\":{\"message\":\"Rate limit reached for model `openai/gpt-oss-120b` in organization `org_01m23mgkvfe918kwnmb4gqcdvf` service tier `on_demand` on tokens per day (TPD): Limit 200000, Used 197082, Requested 5441. Please try again in 18m9.935999999s. Need more tokens? Upgrade to Dev Tier t",
+ "minutes": 19.4,
+ "requests": 10,
+ "test_calls": 8,
+ "passed": 5
+}

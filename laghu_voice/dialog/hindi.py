@@ -23,7 +23,7 @@ from datetime import date
 
 _NUKTA = "़"
 _DEV_DIGITS = str.maketrans("०१२३४५६७८९", "0123456789")
-_PUNCT_RE = re.compile(r"[।॥,.?!;:\"'()\[\]{}\-–—/\\|*_~`]+")
+_PUNCT_RE = re.compile(r"[।॥,.?!;:\"'()\[\]{}\-\u2010\u2011\u2012–—/\\|*_~`]+")   # any hyphen splits words
 
 
 BREAK = "§"                     # a pause the writer marked (comma, danda...), kept only for reading numbers
@@ -621,6 +621,91 @@ def find_days(text: str, unitless_ok: bool = False) -> int | None:
     return None
 
 
+WEEKDAYS = ["सोमवार", "मंगलवार", "बुधवार", "गुरुवार", "शुक्रवार", "शनिवार", "रविवार"]
+_WEEKDAY_VARIANTS = ["सोमवार मंडे", "मंगलवार ट्यूसडे", "बुधवार वेडनेसडे", "गुरुवार वीरवार बृहस्पतिवार थर्सडे",
+                     "शुक्रवार फ्राइडे", "शनिवार सैटरडे", "रविवार इतवार संडे"]
+WEEKDAY_WORDS = {norm(w): k for k, ws in enumerate(_WEEKDAY_VARIANTS) for w in ws.split()}
+_DATE_WORDS = {norm("तारीख"), norm("तारीक"), norm("डेट")}
+
+
+def day_ahead(text: str, today: date) -> tuple[int | None, bool]:
+    """(days from today, whether the text names a day at all) for an appointment or a callback: "कल" -> 1,
+    "शनिवार" -> the coming Saturday, "पाँच दिसंबर" -> 5 December (next year if it has passed), "दस तारीख" -> the
+    10th (next month if it has passed), "तीन दिन बाद" -> 3. A day named but not understood gives (None, True), so
+    the caller is never booked for today by mistake."""
+    toks = tokens(text)
+    named = any(t in WEEKDAY_WORDS or t in MONTH_WORDS or t in _DATE_WORDS or t in _RELATIVE_DAYS for t in toks)
+    for t in toks:
+        if t in _RELATIVE_DAYS:
+            return _RELATIVE_DAYS[t], True
+    qs = quantities(text)
+    weekday = next((WEEKDAY_WORDS[t] for t in toks if t in WEEKDAY_WORDS), None)
+    for i, t in enumerate(toks):
+        if t in MONTH_WORDS or t in _DATE_WORDS:
+            before = [q for q in qs if q.end == i or q.end == i - 1]
+            when = None
+            if before and float(before[-1].value).is_integer():
+                d = before[-1].as_int
+                try:
+                    if t in MONTH_WORDS:
+                        when = date(today.year, MONTH_WORDS[t], d)
+                        if when < today and (today - when).days <= 31:
+                            when = None              # "शनिवार बीस नवंबर" two days after it: a slip, not next year
+                        elif when < today:
+                            when = date(today.year + 1, MONTH_WORDS[t], d)
+                    else:
+                        when = date(today.year, today.month, d)
+                        if when < today:
+                            y, m = (today.year + 1, 1) if today.month == 12 else (today.year, today.month + 1)
+                            when = date(y, m, d)
+                except ValueError:
+                    when = None                          # "सत्तर नवंबर": no such date
+            if when is None:
+                if weekday is None:
+                    return None, True
+                break                                    # the weekday alone ("शुक्रवार सत्तर नवंबर": Friday)
+            if weekday is not None and when.weekday() != weekday:
+                return None, True                        # "गुरुवार छह दिसंबर", a Sunday: not ours to pick
+            return (when - today).days, True
+    if weekday is not None:
+        ahead = (weekday - today.weekday()) % 7
+        return ahead or 7, True
+    days = find_days(text, unitless_ok=False)
+    return days, named or days is not None
+
+
+_HOUR_WORDS = {norm("बजे"), norm("बज")}
+
+
+def hour_part(text: str) -> str | None:
+    """"दस बजे" -> morning, "दो बजे" -> afternoon, "पाँच बजे" -> evening: office hours, when no part is said."""
+    toks = tokens(text)
+    for q in quantities(text):
+        if q.end < len(toks) and toks[q.end] in _HOUR_WORDS and float(q.value).is_integer():
+            h = q.as_int
+            if 8 <= h <= 11:
+                return "morning"
+            if h == 12 or 1 <= h <= 3:
+                return "afternoon"
+            if 4 <= h <= 7:
+                return "evening"
+    return None
+
+
+_SCALE_EN = {"lakh": 100000, "lakhs": 100000, "lac": 100000, "lacs": 100000, "crore": 10 ** 7, "crores": 10 ** 7,
+             "cr": 10 ** 7, "thousand": 1000, "k": 1000, "hundred": 100}
+_EN_AMOUNT = re.compile(r"(\d+(?:\.\d+)?)\s*(lakhs?|lacs?|crores?|cr|thousand|k|hundred)\b", re.I)
+
+
+def fact_numbers(text: str) -> set[float]:
+    """Every number a fact lets the agent say, including English amounts the facts are written in: "8.5 lakh
+    rupees" lets it say साढ़े आठ लाख (850000), not only 8.5."""
+    out = set(number_values(text))
+    for m in _EN_AMOUNT.finditer(text):
+        out.add(round(float(m.group(1)) * _SCALE_EN[m.group(2).lower()], 2))
+    return out
+
+
 _RANGE_WORDS = {norm(w) for w in ["या", "से", "टू", "तो"]}
 
 
@@ -689,6 +774,17 @@ def yes_no(text: str, max_tokens: int = 6) -> str | None:
     if _has(toks, YES):
         return "yes"
     return None
+
+
+_LEAD_YES = {norm(w) for w in ["हाँ", "हां", "हा", "जी", "बिल्कुल", "बिलकुल", "ज़रूर", "जरूर", "ठीक", "ओके"]}
+_TAKES_BACK = {norm(w) for w in ["लेकिन", "मगर", "पर", "परंतु", "बाद", "कभी", "बिज़ी", "व्यस्त"]}
+
+
+def leading_yes(text: str) -> bool:
+    """Does a longer turn start with a yes and take nothing back ("जी हाँ मैं मनीष कुमार हूँ बोलिए", not "हाँ, लेकिन
+    अभी नहीं" or "हाँ बाद में करना")?"""
+    toks = tokens(text)
+    return bool(toks) and toks[0] in _LEAD_YES and not _has(toks, NO) and not (set(toks) & _TAKES_BACK)
 
 
 def employment(text: str) -> str | None:
@@ -874,13 +970,17 @@ def _sensitive_token(t: str) -> bool:
             or bool(re.fullmatch(r"[a-z0-9]{1,12}", t)) or bool(_LETTER_RUN_RE.fullmatch(t)))
 
 
-def mask_for_llm(text: str, strict: bool) -> str:
+def mask_for_llm(text: str, strict: bool, dates: bool = True) -> str:
     """Text safe to send to the LLM.
 
     strict (the caller was asked for a PAN, passcode or date of birth, or is confirming them): every number,
     letter name and month name is replaced by [...]. Otherwise a run of such words is replaced when it could
     be a PAN, a passcode or a date: it names a month, or it says four or more letters and digits without
-    सौ/हज़ार/लाख in it. Amounts ("तीन लाख", "पचास हज़ार") stay, and so does a lone "के" or "जी"."""
+    सौ/हज़ार/लाख in it. Amounts ("तीन लाख", "पचास हज़ार") stay, and so does a lone "के" or "जी".
+
+    dates=False (the spec collects no date of birth): a month name alone doesn't make a run private, so "पच्चीस
+    नवंबर" for a counselling session reaches the LLM. A long run of digits (a phone number, a passcode) still
+    doesn't."""
     toks = tokens(text)
     out: list[str] = []
     i = 0
@@ -906,7 +1006,7 @@ def mask_for_llm(text: str, strict: bool) -> str:
             elif re.fullmatch(r"[a-z0-9]+", t):
                 chars += len(t)
         has_multiplier = any(t in MULTIPLIERS for t in run)
-        if strict or any(t in MONTH_WORDS for t in run) or (chars >= 4 and not has_multiplier):
+        if strict or (dates and any(t in MONTH_WORDS for t in run)) or (chars >= 4 and not has_multiplier):
             out.append(MASK)
         else:
             out.extend(run)

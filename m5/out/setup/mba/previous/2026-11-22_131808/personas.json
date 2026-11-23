@@ -1,0 +1,207 @@
+[
+ {
+  "id": "P1",
+  "kind": "cooperative",
+  "expected": "success",
+  "behaviour": "Answer each question plainly with your facts, one answer per turn.",
+  "name": "Amit Sharma",
+  "facts": {
+   "name": "Amit Sharma",
+   "phone": "9876543210",
+   "program": "full_time",
+   "intake": "july",
+   "work_exp": 2,
+   "city": "Pune",
+   "session_time": {
+    "days": 3,
+    "part": "morning"
+   },
+   "callback_time": {
+    "days": 5,
+    "part": "afternoon"
+   }
+  },
+  "first_said": {},
+  "questions": []
+ },
+ {
+  "id": "P2",
+  "kind": "over-answerer",
+  "expected": "success",
+  "behaviour": "Give two or more of your facts in one turn whenever you can, even before you're asked for them.",
+  "name": "Neha Verma",
+  "facts": {
+   "name": "Neha Verma",
+   "phone": "9123456789",
+   "program": "executive",
+   "intake": "july",
+   "work_exp": 5,
+   "city": "Mumbai",
+   "session_time": {
+    "days": 2,
+    "part": "evening"
+   },
+   "callback_time": {
+    "days": 4,
+    "part": "morning"
+   }
+  },
+  "first_said": {},
+  "questions": []
+ },
+ {
+  "id": "P3",
+  "kind": "undecided",
+  "expected": "success",
+  "behaviour": "The first time you're asked to choose between options, name two of them and say you can't decide. When asked to pick one, pick the one in your facts. Otherwise answer normally.",
+  "name": "Rohit Patel",
+  "facts": {
+   "name": "Rohit Patel",
+   "phone": "9988776655",
+   "program": "online",
+   "intake": "january",
+   "work_exp": 0,
+   "city": "Nagpur",
+   "session_time": {
+    "days": 6,
+    "part": "afternoon"
+   },
+   "callback_time": {
+    "days": 7,
+    "part": "evening"
+   }
+  },
+  "first_said": {},
+  "questions": []
+ },
+ {
+  "id": "P4",
+  "kind": "self-corrector",
+  "expected": "success",
+  "behaviour": "For the slot in FIRST_SAID, first give that wrong value. A turn or two later, or when the agent reads your details back, say it was wrong and give the right value from your facts.",
+  "name": "Sanjana Rao",
+  "facts": {
+   "name": "Sanjana Rao",
+   "phone": "9234567890",
+   "program": "executive",
+   "intake": "july",
+   "work_exp": 4,
+   "city": "Bangalore",
+   "session_time": {
+    "days": 1,
+    "part": "morning"
+   },
+   "callback_time": {
+    "days": 3,
+    "part": "evening"
+   }
+  },
+  "first_said": {
+   "work_exp": 10
+  },
+  "questions": []
+ },
+ {
+  "id": "P5",
+  "kind": "questioner",
+  "expected": "success",
+  "behaviour": "Ask your two QUESTIONS, one at a time, at moments that fit (before answering, or after). Then carry on answering with your facts.",
+  "name": "Vikram Singh",
+  "facts": {
+   "name": "Vikram Singh",
+   "phone": "9345678901",
+   "program": "online",
+   "intake": "july",
+   "work_exp": 1,
+   "city": "Chennai",
+   "session_time": {
+    "days": 5,
+    "part": "evening"
+   },
+   "callback_time": {
+    "days": 8,
+    "part": "morning"
+   }
+  },
+  "first_said": {},
+  "questions": [
+   "What are the eligibility criteria for the MBA programs?",
+   "Do you guarantee a scholarship if I get a high entrance score?"
+  ]
+ },
+ {
+  "id": "P6",
+  "kind": "interrupter",
+  "expected": "success",
+  "behaviour": "You're in a hurry and often cut the agent off. Answer as soon as you understand what's being asked.",
+  "name": "Priya Nair",
+  "facts": {
+   "name": "Priya Nair",
+   "phone": "9456789012",
+   "program": "full_time",
+   "intake": "july",
+   "work_exp": 3,
+   "city": "Hyderabad",
+   "session_time": {
+    "days": 0,
+    "part": "morning"
+   },
+   "callback_time": {
+    "days": 2,
+    "part": "afternoon"
+   }
+  },
+  "first_said": {},
+  "questions": []
+ },
+ {
+  "id": "P7",
+  "kind": "refuser",
+  "expected": "declined",
+  "behaviour": "Answer the questions, but at the main decision (when asked to book, confirm, join or agree) say no. Decline any other offer too, politely.",
+  "name": "Arun Kumar",
+  "facts": {
+   "name": "Arun Kumar",
+   "phone": "9567890123",
+   "program": "executive",
+   "intake": "july",
+   "work_exp": 6,
+   "city": "Ahmedabad",
+   "session_time": {
+    "days": 4,
+    "part": "evening"
+   },
+   "callback_time": {
+    "days": 6,
+    "part": "night"
+   }
+  },
+  "first_said": {},
+  "questions": []
+ },
+ {
+  "id": "P8",
+  "kind": "human-seeker",
+  "expected": "transferred",
+  "behaviour": "Answer the first two questions, then ask to talk to a real person. Insist if needed.",
+  "name": "Lakshmi Menon",
+  "facts": {
+   "name": "Lakshmi Menon",
+   "phone": "9678901234",
+   "program": "online",
+   "intake": "july",
+   "work_exp": 0,
+   "city": "Kolkata",
+   "session_time": {
+    "days": 9,
+    "part": "afternoon"
+   },
+   "callback_time": {
+    "days": 10,
+    "part": "morning"
+   }
+  },
+  "first_said": {},
+  "questions": []
+ }
+]

@@ -27,13 +27,8 @@ knowledge:                         # what the LLM may use to answer questions; n
   includes: "all equipment, a trainer on the gym floor and a locker; personal training costs extra (front desk)"
   changes: "the batch time and the start day can be changed later at the front desk; they only need to pick one now"
 
-timing:
-  filler_after_ms: 700             # first sentence of the reply not ready this long after the turn: the filler
-  reprompt_after_s: 6
-  hold_s: 20                       # after "एक सेकंड" (one second): wait this long before "are you there?"
-  hangup_after_reprompts: 3
-  max_unclear: 3
-  max_off_topic: 2
+# Timing, and the lines every agent needs ("didn't understand", "I was asking", hand-over, hang-up...), come
+# from the engine's defaults (laghu_voice/dialog/defaults.yaml). This spec keeps only what is particular to the gym.
 
 slots:
   full_name: {type: name, describe: "the caller's name"}
@@ -91,14 +86,7 @@ lines:
   # I'm connecting you to our front desk. Please stay on the line.
   transfer_failed: "माफ़ कीजिए, अभी फ़्रंट डेस्क से जुड़ नहीं पा रहा हूँ। वे आपको जल्द कॉल करेंगे। धन्यवाद।"
   # Sorry, I can't reach the front desk right now. They'll call you soon. Thank you.
-  tech_problem: "माफ़ कीजिए, अभी हमारे सिस्टम में कुछ दिक्कत है।"        # Sorry, there's a problem in our system right now.
-  hangup_silence: "मुझे आपकी आवाज़ नहीं आ रही है। मैं यह कॉल समाप्त कर रहा हूँ। धन्यवाद।"
-  # I can't hear you. I'm ending this call. Thank you.
-  not_heard_guard: "आगे बढ़ने से पहले, कृपया पूरी बात सुन लीजिए।"     # Before we go ahead, please hear it all.
-  repeat: "जी, मैं दोबारा बोलता हूँ।"                                # Sure, I'll say it again.
   question_fallback: "इसकी पक्की जानकारी फ़्रंट डेस्क आपको दे देगा।"     # The front desk will give you exact details.
-  hold_ok: "जी, ज़रूर।"                                           # Sure. (said to "one second", then it waits)
-  filler: "जी, एक पल।"                                                 # Yes, one moment.
 
   # --- templates
   quote: "{plan:label} प्लान की फ़ीस {price:words} रुपये है।"            # The fee for the X plan is Y rupees.
@@ -131,9 +119,6 @@ lines:
     llm: "Ask for one exact day to start: today, tomorrow, or after how many days."
     example: "कृपया शुरू करने का एक तय दिन बताइए। आज, कल, या कितने दिन बाद?"
     # Please tell me one exact day to start: today, tomorrow, or after how many days?
-  pick_one:
-    llm: "Say they mentioned more than one, and ask them to choose one."
-    example: "आपने एक से ज़्यादा बताया। कृपया कोई एक चुनिए।"           # You mentioned more than one. Please pick one.
   no_discount:
     llm: "Say the fees are the same for everyone and can't be reduced, then ask if they'd like to go ahead and book at this fee."
     example: "फ़ीस सबके लिए एक जैसी है, इसमें कमी नहीं हो सकती। क्या मैं इसी फ़ीस पर बुक कर दूँ?"
@@ -156,24 +141,9 @@ lines:
   goodbye:
     llm: "Thank them for their time and say they're welcome at the gym any time."
     example: "आपके समय के लिए धन्यवाद। आप जब चाहें जिम आ सकते हैं।"         # Thanks for your time. Come to the gym any time.
-  low_confidence:
-    llm: "Apologise that you're having trouble understanding them."
-    example: "माफ़ कीजिए, मुझे आपकी बात ठीक से समझ नहीं आ रही है।"          # Sorry, I'm having trouble understanding you.
   out_of_scope:
     llm: "Say the front desk can help them better with this."
     example: "इसमें हमारा फ़्रंट डेस्क आपकी बेहतर मदद कर पाएगा।"            # Our front desk can help you better with this.
-  not_heard:
-    llm: "Say you couldn't hear them."
-    example: "माफ़ कीजिए, मैं आपकी बात सुन नहीं पाया।"                      # Sorry, I couldn't hear you.
-  unclear:
-    llm: "If the caller asked or said something you can reply to from FACTS (a question without a question word, like whether there are other plans), reply to it in one sentence; otherwise say briefly that you didn't quite understand."
-    example: "माफ़ कीजिए, मैं ठीक से समझ नहीं पाया।"                       # Sorry, I didn't quite understand.
-  was_asking:
-    llm: "Say that you were asking something (the question follows)."
-    example: "जी, मैं पूछ रहा था।"                                       # Yes, I was asking:
-  are_you_there:
-    llm: "Ask if they are still on the line."
-    example: "क्या आप लाइन पर हैं?"                                      # Are you on the line?
   scope:
     llm: "Say that on this call you can help with joining the gym."
     example: "मैं इस कॉल पर जिम की मेंबरशिप में आपकी मदद कर सकता हूँ।"       # On this call I can help with gym membership.
@@ -191,25 +161,22 @@ tools:
       - {if: {outcome: ok}, then: quoted}
       - {then: error}
   book_membership:
+    commits: true                    # books: runs only after a yes (the checker makes sure)
     mock: [{outcome: ok, data: {booking_ref: FZ1024}}]
     save: {booking_ref: {from: data.booking_ref, private: true}}
     events:
       - {if: {outcome: ok}, then: booked}
       - {then: error}
   book_trial:
+    commits: true
     mock: [{outcome: ok}]
     events:
       - {if: {outcome: ok}, then: booked}
       - {then: error}
-  handover:
-    mock: [{outcome: ok}]
-    events:
-      - {if: {outcome: ok}, then: ok}
-      - {then: failed}
 
 states:
   greet: {say: greeting, expect: yes_no, also: [full_name], on: {yes: ask_name, no: not_now}}   # "हाँ, मैं अभय"
-  not_now: {say: not_now, end: not_now}
+  not_now: {say: not_now, end: not_now, outcome: declined}
   ask_name: {say: ask_name, expect: full_name, skip_if: full_name, on: {answer: ask_goal}}
   ask_goal: {say: ask_goal, expect: goal, skip_if: goal, on: {answer: ask_plan}}
   ask_plan: {say: ask_plan, expect: plan, also: [time_slot], skip_if: plan, on: {answer: ask_time}}
@@ -231,23 +198,14 @@ states:
     expect: yes_no
     on: {yes: book_trial, no: back}  # no: back to the question asked before
   book_membership: {tool: book_membership, on: {booked: booked, error: tech_problem}}
-  booked: {say: booked, end: booked}
+  booked: {say: booked, end: booked, outcome: success}
   offer_trial: {say: offer_trial, expect: yes_no, on: {yes: book_trial, no: goodbye}}
   book_trial: {tool: book_trial, on: {booked: trial_booked, error: tech_problem}}
-  trial_booked: {say: trial_booked, end: trial_booked}
-  goodbye: {say: goodbye, end: declined}
-  handover: {tool: handover, on: {ok: transfer, failed: transfer_failed}}
-  low_confidence: {say: low_confidence, next: handover}
+  trial_booked: {say: trial_booked, end: trial_booked, outcome: success}
+  goodbye: {say: goodbye, end: declined, outcome: declined}
   out_of_scope: {say: out_of_scope, next: handover}
-  tech_problem: {say: tech_problem, next: handover}
-  transfer: {say: transfer, end: transferred}
-  transfer_failed: {say: transfer_failed, end: transfer_failed}
-  hangup_silence: {say: hangup_silence, end: no_response}
+  transfer: {say: transfer, end: transferred, outcome: transferred}
+  transfer_failed: {say: transfer_failed, end: transfer_failed, outcome: failed}
 
-global:
-  human: handover
-  stop: goodbye
+global:                              # human, stop, silence and the rest come from the engine's defaults
   trial: confirm_trial               # a trial asked for at any point: say what's offered, then ask
-  off_topic_limit: out_of_scope
-  low_confidence: low_confidence
-  silence: hangup_silence

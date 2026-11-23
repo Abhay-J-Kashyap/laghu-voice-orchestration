@@ -1,0 +1,82 @@
+# What every agent needs, so a spec only has to say what is particular to its use case (Milestone 5).
+# A spec overrides any of it by defining the same key. States here are added only if something reaches them.
+# [a|b] picks the male or female form by the agent's gender. Every Hindi line has its English meaning beside it.
+
+timing:
+  filler_after_ms: 700        # the reply's first sentence isn't ready this long after the caller's turn: the filler
+  reprompt_after_s: 6
+  hold_s: 20                  # after "एक सेकंड" ("one second"): wait this long before "are you there?"
+  hangup_after_reprompts: 3
+  max_unclear: 3
+  max_off_topic: 2
+
+lines:
+  # --- fixed
+  repeat: "जी, मैं दोबारा [बोलता|बोलती] हूँ।"                          # Sure, I'll say it again.
+  not_heard_guard: "आगे बढ़ने से पहले, कृपया पूरी बात सुन लीजिए।"         # Before we go ahead, please hear it all.
+  hold_ok: "जी, ज़रूर।"                                                 # Sure. (said to "one second", then it waits)
+  filler: "जी, एक पल।"                                                  # Yes, one moment.
+  question_fallback: "इसकी पक्की जानकारी हमारी टीम आपको दे देगी।"         # Our team will give you the exact details.
+  transfer: "मैं आपको हमारी टीम से जोड़ [रहा|रही] हूँ। कृपया लाइन पर बने रहिए।"
+  # I'm connecting you to our team. Please stay on the line.
+  transfer_failed: "माफ़ कीजिए, अभी मैं आपको टीम से नहीं जोड़ पा [रहा|रही] हूँ। वे आपको जल्द कॉल करेंगे। धन्यवाद।"
+  # Sorry, I can't connect you to the team right now. They'll call you soon. Thank you.
+  tech_problem: "माफ़ कीजिए, अभी हमारे सिस्टम में कुछ दिक्कत है।"          # Sorry, there's a problem in our system right now.
+  hangup_silence: "मुझे आपकी आवाज़ नहीं आ रही है। मैं यह कॉल समाप्त कर [रहा|रही] हूँ। धन्यवाद।"
+  # I can't hear you. I'm ending this call. Thank you.
+
+  # --- written by the LLM
+  unclear:
+    llm: "If the caller asked or said something you can reply to from FACTS (a question without a question word, like whether there are other options), reply to it in one sentence; otherwise say briefly that you didn't quite understand."
+    example: "माफ़ कीजिए, मैं ठीक से समझ नहीं [पाया|पाई]।"                    # Sorry, I didn't quite understand.
+  out_of_range:
+    llm: "Say that this isn't possible, and ask again, saying the allowed range from the question (e.g. within the next fourteen days)."
+    example: "माफ़ कीजिए, यह संभव नहीं है। कृपया दिए गए समय के अंदर बताइए।"   # Sorry, that isn't possible. Please say one within the allowed time.
+  not_heard:
+    llm: "Say you couldn't hear them."
+    example: "माफ़ कीजिए, मैं आपकी बात सुन नहीं [पाया|पाई]।"                  # Sorry, I couldn't hear you.
+  was_asking:
+    llm: "Say that you were asking something (the question follows)."
+    example: "जी, मैं पूछ [रहा|रही] थ[ा|ी]।"                                # Yes, I was asking:
+  are_you_there:
+    llm: "Ask if they are still on the line."
+    example: "क्या आप लाइन पर हैं?"                                       # Are you on the line?
+  pick_one:
+    llm: "Say they mentioned more than one, and ask them to choose one."
+    example: "आपने एक से ज़्यादा बताया। कृपया कोई एक चुनिए।"                 # You mentioned more than one. Please pick one.
+  scope:
+    llm: "Say what you can help with on this call, from the persona, in one sentence."
+    example: "मैं इस कॉल पर इसी बारे में आपकी मदद कर सकता हूँ।"              # On this call I can help with this.
+  low_confidence:
+    llm: "Apologise that you're having trouble understanding them."
+    example: "माफ़ कीजिए, मुझे आपकी बात ठीक से समझ नहीं आ रही है।"          # Sorry, I'm having trouble understanding you.
+  out_of_scope:
+    llm: "Say our team can help them better with this."
+    example: "इसमें हमारी टीम आपकी बेहतर मदद कर पाएगी।"                    # Our team can help you better with this.
+  goodbye:
+    llm: "Say no problem, and thank them for their time."
+    example: "कोई बात नहीं। आपके समय के लिए धन्यवाद।"                       # No problem. Thank you for your time.
+
+tools:
+  handover:                    # used only when the spec's backend is mock; an http spec defines its own
+    mock: [{outcome: ok}]
+    events:
+      - {if: {outcome: ok}, then: ok}
+      - {then: failed}
+
+states:
+  goodbye: {say: goodbye, end: declined, outcome: declined}
+  handover: {tool: handover, on: {ok: transfer, failed: transfer_failed}}
+  low_confidence: {say: low_confidence, next: handover}
+  out_of_scope: {say: out_of_scope, next: handover}
+  tech_problem: {say: tech_problem, next: handover}
+  transfer: {say: transfer, end: transferred, outcome: transferred}
+  transfer_failed: {say: transfer_failed, end: transfer_failed, outcome: failed}
+  hangup_silence: {say: hangup_silence, end: no_response, outcome: no_contact}
+
+global:
+  human: handover
+  stop: goodbye
+  off_topic_limit: out_of_scope
+  low_confidence: low_confidence
+  silence: hangup_silence

@@ -1,0 +1,34 @@
+[
+ {
+  "q": "What system or calendar should the agent use to record and confirm counselling session bookings?",
+  "a": "Bookings are recorded in the admissions team's shared booking calendar. The agent confirms the day and time out loud on the call. A counsellor from admissions then calls the student a day before the session to confirm. The agent does not send any SMS, WhatsApp or email."
+ },
+ {
+  "q": "What specific information (e.g., email, phone, preferred video platform) must be collected to send the counselling session invitation?",
+  "a": "phone"
+ },
+ {
+  "q": "Are there any blackout dates or holidays when counsellors are not available despite the 10 am‑7 pm schedule?",
+  "a": "no"
+ },
+ {
+  "q": "What is the exact script or rule for handling callers who are not eligible (e.g., insufficient marks or no entrance score)?",
+  "a": "please reach out to the college management for a payment seat or a discussion about your scores"
+ },
+ {
+  "q": "If the prospect wants a callback, what is the maximum number of callback attempts and the preferred time‑window for those callbacks?",
+  "a": "5 callback attempts and 1 day time window between each callback"
+ },
+ {
+  "q": "Should the agent verify the prospect’s city to determine if they are eligible for on‑campus programs, and if so, what cities are considered out‑of‑area?",
+  "a": "No, the agent should not check a city for eligibility. Anyone from any city can apply. The agent only notes the city so the counsellor knows. The Full-time and Executive MBA are on campus in Pune. The Online MBA can be done from anywhere in India. If the caller is outside Pune, the agent mentions that the Online MBA needs no relocation and offers the counselling session by phone or video."
+ },
+ {
+  "q": "What is the procedure for escalating the call to a human supervisor (e.g., if the prospect asks about scholarships or admission guarantees)?",
+  "a": "The agent never answers questions about scholarships, fee waivers, discounts or admission guarantees. For these, and whenever the caller asks for a person, it says an admissions counsellor will handle that, offers to book the free counselling session, or arranges a callback from the admissions team. It never promises or hints that admission or a scholarship is certain. Admission is decided by the admissions committee after an application is submitted."
+ },
+ {
+  "q": "How should the agent confirm the booking with the prospect (e.g., SMS, email) and what exact details must be included in that confirmation?",
+  "a": "The agent confirms the booking out loud, at the end of the call. It does not send an SMS or email. It reads back the booking in one sentence: the day and time of the counselling session, that it is a free 30-minute session by phone or video, and the program the caller is interested in. It asks the caller to say yes if that is correct. If the caller corrects anything, the agent fixes it and reads it back again. A counsellor from admissions will call the caller a day before to confirm."
+ }
+]

@@ -1,0 +1,159 @@
+[
+ {
+  "id": "P1",
+  "kind": "cooperative",
+  "expected": "success",
+  "behaviour": "Answer each question plainly with your facts, one answer per turn.",
+  "name": "Amit Sharma",
+  "facts": {
+   "name": "Amit Sharma",
+   "age": 34,
+   "doctor": "mehri",
+   "problem": "headache and mild fever",
+   "appointment_time": {
+    "days": 2,
+    "part": "morning"
+   }
+  },
+  "first_said": {},
+  "questions": []
+ },
+ {
+  "id": "P2",
+  "kind": "over-answerer",
+  "expected": "success",
+  "behaviour": "Give two or more of your facts in one turn whenever you can, even before you're asked for them.",
+  "name": "Neha Verma",
+  "facts": {
+   "name": "Neha Verma",
+   "age": 28,
+   "doctor": "khans",
+   "problem": "persistent cough for three days",
+   "appointment_time": {
+    "days": 4,
+    "part": "evening"
+   }
+  },
+  "first_said": {},
+  "questions": []
+ },
+ {
+  "id": "P3",
+  "kind": "undecided",
+  "expected": "success",
+  "behaviour": "The first time you're asked to choose between options, name two of them and say you can't decide. When asked to pick one, pick the one in your facts. Otherwise answer normally.",
+  "name": "Rohit Patel",
+  "facts": {
+   "name": "Rohit Patel",
+   "age": 45,
+   "doctor": "iyer",
+   "problem": "skin rash on arms",
+   "appointment_time": {
+    "days": 1,
+    "part": "morning"
+   }
+  },
+  "first_said": {},
+  "questions": []
+ },
+ {
+  "id": "P4",
+  "kind": "self-corrector",
+  "expected": "success",
+  "behaviour": "For the slot in FIRST_SAID, first give that wrong value. A turn or two later, or when the agent reads your details back, say it was wrong and give the right value from your facts.",
+  "name": "Sonia Gupta",
+  "facts": {
+   "name": "Sonia Gupta",
+   "age": 52,
+   "doctor": "mehri",
+   "problem": "joint pain in knees",
+   "appointment_time": {
+    "days": 3,
+    "part": "evening"
+   }
+  },
+  "first_said": {
+   "age": 30
+  },
+  "questions": []
+ },
+ {
+  "id": "P5",
+  "kind": "questioner",
+  "expected": "success",
+  "behaviour": "Ask your two QUESTIONS, one at a time, at moments that fit (before answering, or after). Then carry on answering with your facts.",
+  "name": "Vikram Singh",
+  "facts": {
+   "name": "Vikram Singh",
+   "age": 60,
+   "doctor": "khans",
+   "problem": "child fever, my son is 5",
+   "appointment_time": {
+    "days": 5,
+    "part": "morning"
+   }
+  },
+  "first_said": {},
+  "questions": [
+   "What is the fee for Dr. Khan?",
+   "Do you have a pediatrician on Sunday?"
+  ]
+ },
+ {
+  "id": "P6",
+  "kind": "interrupter",
+  "expected": "success",
+  "behaviour": "You're in a hurry and often cut the agent off. Answer as soon as you understand what's being asked.",
+  "name": "Anjali Rao",
+  "facts": {
+   "name": "Anjali Rao",
+   "age": 22,
+   "doctor": "iyer",
+   "problem": "acne and oily skin",
+   "appointment_time": {
+    "days": 6,
+    "part": "evening"
+   }
+  },
+  "first_said": {},
+  "questions": []
+ },
+ {
+  "id": "P7",
+  "kind": "refuser",
+  "expected": "declined",
+  "behaviour": "Answer the questions, but at the main decision (when asked to book, confirm, join or agree) say no. Decline any other offer too, politely.",
+  "name": "Manoj Kumar",
+  "facts": {
+   "name": "Manoj Kumar",
+   "age": 38,
+   "doctor": "mehri",
+   "problem": "back pain after lifting boxes",
+   "appointment_time": {
+    "days": 0,
+    "part": "morning"
+   }
+  },
+  "first_said": {},
+  "questions": []
+ },
+ {
+  "id": "P8",
+  "kind": "human-seeker",
+  "expected": "transferred",
+  "behaviour": "Answer the first two questions, then ask to talk to a real person. Insist if needed.",
+  "name": "Priya Nair",
+  "facts": {
+   "name": "Priya Nair",
+   "age": 31,
+   "doctor": "iyer",
+   "problem": "allergic reaction to a new lotion",
+   "appointment_time": {
+    "days": 2,
+    "part": "afternoon"
+   }
+  },
+  "first_said": {},
+  "questions": []
+ }
+]

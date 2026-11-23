@@ -1,0 +1,116 @@
+@import "tailwindcss";
+/* fonts: paths without ".css", which every resolver maps the same way (with it, some pick the wrong rule in the
+   packages' export map and look for "400.css.css") */
+@import "@fontsource-variable/anek-latin/standard";
+@import "@fontsource-variable/anek-devanagari/standard";
+@import "@fontsource-variable/geist/wght";
+@import "@fontsource/mukta/400";
+@import "@fontsource/mukta/500";
+@import "@fontsource/mukta/700";
+
+:root {
+  --ink: #16131f;          /* night indigo: the page */
+  --ink-2: #1f1b2b;        /* raised surfaces */
+  --ink-3: #2b2539;        /* borders, wells */
+  --parchment: #ede4d3;    /* text */
+  --dust: #a99f8f;         /* quiet text */
+  --marigold: #e9a23b;     /* actions, the one bright thing */
+  --maroon: #7a2e2a;
+  /* what a failed test call most likely needs fixing */
+  --c-spec: #e9a23b;
+  --c-agent: #ef7a8a;
+  --c-caller: #7cc3e8;
+  --c-judge: #b9a3f0;
+  --c-unclear: #8d8597;
+  --ok: #8fd19e;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --font-display: "Anek Latin Variable", "Anek Latin", system-ui, sans-serif;
+  --font-sans: "Mukta", system-ui, sans-serif;
+  --font-hindi: "Anek Devanagari Variable", "Mukta", sans-serif;
+  --font-plain: "Geist Variable", "Geist", system-ui, sans-serif;
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-parchment: var(--parchment);
+  --color-dust: var(--dust);
+  --color-marigold: var(--marigold);
+  --color-maroon: var(--maroon);
+  --color-ok: var(--ok);
+}
+
+html, body, #root { min-height: 100%; }
+body {
+  margin: 0;
+  background: var(--ink);
+  color: var(--parchment);
+  font-family: var(--font-sans);
+  font-size: 17.5px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+.display {
+  font-family: var(--font-display);
+  font-stretch: 78%;
+  font-weight: 640;
+  letter-spacing: -0.01em;
+  line-height: 0.95;
+}
+.hindi { font-family: var(--font-hindi); }
+
+:focus-visible { outline: 2px solid var(--marigold); outline-offset: 3px; border-radius: 4px; }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  padding: 0.6rem 1.1rem; border-radius: 999px; font-weight: 700; font-size: 0.95rem;
+  background: var(--marigold); color: var(--ink); border: 1px solid var(--marigold);
+  cursor: pointer; transition: background 0.15s, color 0.15s;
+}
+.btn:hover { background: #f3b85c; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-quiet { background: transparent; color: var(--parchment); border-color: var(--ink-3); }
+.btn-quiet:hover { background: var(--ink-3); }
+
+/* the frosted panel the workspace sits on, above the Grainient field */
+.pane {
+  background: color-mix(in oklab, var(--ink) 82%, transparent);
+  backdrop-filter: blur(18px) saturate(1.1);
+  -webkit-backdrop-filter: blur(18px) saturate(1.1);
+  border: 1px solid color-mix(in oklab, var(--parchment) 10%, transparent);
+  border-radius: 22px;
+}
+
+.field {
+  width: 100%; background: var(--ink-2); color: var(--parchment); border: 1px solid var(--ink-3);
+  border-radius: 12px; padding: 0.75rem 0.9rem; font: inherit; line-height: 1.5;
+}
+.field:focus { outline: none; border-color: var(--marigold); }
+
+/* the stand-in loader, until the Dot Matrix loaders are added */
+.dotgrid { display: inline-grid; grid-template-columns: repeat(3, auto); place-content: center; }
+.dotgrid i { display: block; border-radius: 50%; background: currentColor; opacity: 0.2; animation: dotgrid 0.9s infinite; }
+@keyframes dotgrid { 0%, 100% { opacity: 0.18; } 30% { opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .dotgrid i { animation: none; opacity: 0.6; }
+}
+
+.cause-spec { --c: var(--c-spec); }
+.cause-agent { --c: var(--c-agent); }
+.cause-caller { --c: var(--c-caller); }
+.cause-judge { --c: var(--c-judge); }
+.cause-unclear { --c: var(--c-unclear); }
+.cause-chip {
+  color: var(--c); border: 1px solid color-mix(in oklab, var(--c) 45%, transparent);
+  background: color-mix(in oklab, var(--c) 12%, transparent);
+  border-radius: 999px; padding: 0.05rem 0.55rem; font-size: 0.8rem; font-weight: 700; white-space: nowrap;
+}
+
+html { scrollbar-width: thin; scrollbar-color: rgb(237 228 211 / 0.22) transparent; }
+html::-webkit-scrollbar { width: 8px; background: transparent; }
+html::-webkit-scrollbar-thumb { background: rgb(237 228 211 / 0.22); border-radius: 8px; }
+
+.scroll-thin { scrollbar-width: thin; scrollbar-color: var(--ink-3) transparent; }

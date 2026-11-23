@@ -56,7 +56,7 @@ with `clone.py`, copy its `.npy` into `vendor\laghu\model\voices\` and set `LAGH
 ```powershell
 python -m pytest
 ```
-Expect `183 passed`. Tests that need a model you haven't downloaded are skipped, and say which script to run. To see its timing, run it on its own:
+Expect `248 passed`. Tests that need a model you haven't downloaded are skipped, and say which script to run. To see its timing, run it on its own:
 
 ```powershell
 python -m pytest tests/test_laghu_adapter.py -k real -s
@@ -171,6 +171,51 @@ from "does the loan agent work" to "can the platform set up any use case", which
 evidence it closed on: 42 of 42 typed loan calls with a scripted stand-in for Groq against the real backend,
 the test suite, and eight live gym calls. `m4\run_dialog_eval.py` and `m4\auto_calls.py` still work if you
 want to run them.
+
+## Milestone 5: set up an agent from a description
+
+Rules: `m5\DECISION_RULES.md`. You write a use case in plain English; the setup tool asks you what's missing,
+writes the spec, checks it, tests it with simulated callers, and writes a review in English.
+
+```powershell
+python -m laghu_voice.setup m5\use_cases\mba.md          # about 15-25 minutes; answer its questions, then wait
+# read m5\out\setup\mba\review.md, then:
+python -m laghu_voice.setup approve m5\out\setup\mba     # copies the spec to agents\mba.yaml
+python m5\simulate.py agents\mba.yaml m5\use_cases\mba.md  # fresh simulated callers against it
+```
+
+Uses Groq: `openai/gpt-oss-120b` writes the spec and plays the callers; the agent stays on `gpt-oss-20b`. Every
+request is paced to Groq's free-tier limits; at the daily limit it stops and tells you to run the same command
+tomorrow (the simulator resumes where it stopped). `python m5\cache_probe.py` measures the prompts.
+
+### The setup UI in the browser
+
+The same setup tool, as a web page: describe the call, answer its questions, watch the build and the eight test
+calls live (each failed call labelled with its likely cause: spec, engine, test caller or judge), read every line
+and transcript in Latin letters with the English meaning, and approve. Runs made from the command line show up too.
+
+```powershell
+pip install -r requirements.txt                 # adds fastapi and uvicorn
+python -m laghu_voice.web                       # http://localhost:8000 (the built page is in web\dist)
+```
+
+To change the page, or to add the Dot Matrix loaders (until then a small dot grid stands in), you need Node.js:
+
+```powershell
+cd web
+npm install
+npx shadcn@latest add @dotmatrix/dotm-square-3 @dotmatrix/dotm-circular-20 @dotmatrix/dotm-square-18 @dotmatrix/dotm-3x3-1
+npm run dev        # http://localhost:5173, with python -m laghu_voice.web running for the API
+npm run build      # writes web\dist, which python -m laghu_voice.web serves
+```
+
+The landing page's pictures are made by scripts, so they can be changed. With `npm run dev` running:
+`python web\tools\halftone\shoot.py` renders the hero's two looks of `web\tools\halftone\photo.jpg` (Paper's
+halftone dots: the dithered default and the colour mosaic the cursor reveals), `python web\tools\grains\shoot.py`
+renders the grain cards, and `python web\tools\sprites\make_sprites.py` writes the index icons.
+
+Setup jobs run one at a time (Groq's per-minute limit is per model). Progress is written to
+`m5\out\setup\<agent>\events.jsonl` as it happens, so reloading the page or restarting the server loses nothing.
 
 ## Milestone 3 part B: the barge-in probe
 

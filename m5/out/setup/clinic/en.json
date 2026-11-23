@@ -1,0 +1,15 @@
+{
+ "greeting": "I am {agent} from {company}. May I speak with you now?",
+ "goodbye_polite": "Thank you, have a nice day. Goodbye.",
+ "ask_problem": "Please tell me what kind of problem you need an appointment for. You can choose child’s illness, skin problem, or general problem.",
+ "ask_age": "Please tell the patient’s age.",
+ "doctor_unavailable": "Sorry, the selected doctor is not available at that time. Would you like to choose another time or doctor?",
+ "ask_time": "Please tell me which day within the next seven days and whether morning or evening you would like the appointment.",
+ "confirm_readback": "I confirm that {patient_name}, age {age} years, with Dr. {doctor}, appointment on {appointment_time}. Is this correct?",
+ "fix_prompt": "Would you like to change any of these details?",
+ "booked": "Your appointment has been booked. Thank you.",
+ "tech_problem": "Sorry, due to a technical problem I cannot assist you. Please call again later.",
+ "emergency_line": "Please go to the nearest hospital immediately.",
+ "pick_one": "Please choose one of the options: {problem:label}.",
+ "ask_name": "Please tell me the patient's name."
+}

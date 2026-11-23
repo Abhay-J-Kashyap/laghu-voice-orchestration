@@ -107,6 +107,7 @@ class DialogLLM:
         self.first_token_timeout_s = first_token_timeout_s
         self.requests: list[dict] = []
         self.blocked: list[dict] = []
+        self.today = None                         # set by the Agent: days to a weekday or a date count from it
 
     @property
     def persona(self) -> str:
@@ -133,6 +134,8 @@ class DialogLLM:
         system = EXTRACT_SYSTEM.format(persona=self.persona, intents="\n".join(helps),
                                        fields="\n".join(field_help) or "(none)", reply_help=reply_help)
         user = self._context(asked, history, interrupted)
+        if self.today is not None and any(s.type == "time" for s in slots):
+            user += f"TODAY: {self.today:%A} {self.today.isoformat()}\n"
         user += f"The agent was asking for: {expect}.\nCaller said: \"{caller}\""
         if next_steps:
             user += "\n\nNEXT (what the reply must do, by intent):\n" + "\n".join(
